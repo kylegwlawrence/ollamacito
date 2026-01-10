@@ -1,0 +1,27 @@
+# Web Framework
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+
+# Database
+sqlalchemy==2.0.27
+asyncpg==0.29.0
+alembic==1.13.1
+
+# Data Validation
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# Ollama Integration
+ollama==0.1.6
+
+# HTTP Client
+# (managed by ollama dependency)
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# Logging
+python-json-logger==2.0.7
+
+# CORS
+python-multipart==0.0.9

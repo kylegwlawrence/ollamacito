@@ -1,0 +1,44 @@
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--bg-primary);
+}
+
+.chat-container--empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-container__empty-state {
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.chat-container__empty-state h2 {
+  margin-bottom: 0.5rem;
+}
+
+.chat-container__header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chat-container__header h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.chat-container__model {
+  padding: 0.25rem 0.75rem;
+  background-color: var(--bg-secondary);
+  color: var(--accent-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
