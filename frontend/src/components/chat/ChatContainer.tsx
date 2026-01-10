@@ -72,7 +72,12 @@ export const ChatContainer = () => {
         isStreaming={streaming.isStreaming}
         streamingContent={streaming.streamingContent}
       />
-      <MessageInput onSend={handleSend} disabled={streaming.isStreaming} />
+      <MessageInput
+        onSend={handleSend}
+        disabled={streaming.isStreaming}
+        isStreaming={streaming.isStreaming}
+        onStop={streaming.cancelStream}
+      />
     </div>
   )
 }

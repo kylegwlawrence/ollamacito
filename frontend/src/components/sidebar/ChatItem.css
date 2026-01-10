@@ -84,3 +84,41 @@
   background: var(--bg-secondary);
   color: var(--text-primary);
 }
+
+.chat-item__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.chat-item__delete {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.chat-item:hover .chat-item__delete {
+  display: flex;
+}
+
+.chat-item__delete:hover {
+  background: var(--error-color);
+  color: white;
+}
+
+.chat-item__delete:active {
+  transform: scale(0.95);
+}

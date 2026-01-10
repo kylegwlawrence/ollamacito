@@ -5,9 +5,11 @@ import './MessageInput.css'
 interface MessageInputProps {
   onSend: (message: string) => void
   disabled?: boolean
+  isStreaming?: boolean
+  onStop?: () => void
 }
 
-export const MessageInput = ({ onSend, disabled }: MessageInputProps) => {
+export const MessageInput = ({ onSend, disabled, isStreaming, onStop }: MessageInputProps) => {
   const [message, setMessage] = useState('')
 
   const handleSend = () => {
@@ -35,13 +37,23 @@ export const MessageInput = ({ onSend, disabled }: MessageInputProps) => {
         disabled={disabled}
         rows={3}
       />
-      <Button
-        onClick={handleSend}
-        disabled={disabled || !message.trim()}
-        variant="primary"
-      >
-        Send
-      </Button>
+      {isStreaming ? (
+        <Button
+          onClick={onStop}
+          variant="secondary"
+          className="message-input__stop-button"
+        >
+          Stop
+        </Button>
+      ) : (
+        <Button
+          onClick={handleSend}
+          disabled={disabled || !message.trim()}
+          variant="primary"
+        >
+          Send
+        </Button>
+      )}
     </div>
   )
 }

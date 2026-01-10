@@ -9,9 +9,10 @@ interface ChatItemProps {
   onSelect: (chat: Chat) => void
   onRename: (chatId: string, newTitle: string) => Promise<void>
   onChangeModel: (chatId: string, newModel: string) => Promise<void>
+  onDelete: (chatId: string) => Promise<void>
 }
 
-export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel }: ChatItemProps) => {
+export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, onDelete }: ChatItemProps) => {
   const { models } = useModels()
   const [isEditing, setIsEditing] = useState(false)
   const [isSelectingModel, setIsSelectingModel] = useState(false)
@@ -39,6 +40,11 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel }: 
       await onChangeModel(chat.id, newModel)
     }
     setIsSelectingModel(false)
+  }
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    await onDelete(chat.id)
   }
 
   return (
@@ -77,11 +83,21 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel }: 
           <div className="chat-item__title" onDoubleClick={() => setIsEditing(true)}>
             {chat.title}
           </div>
-          <div className="chat-item__model" onClick={(e) => {
-            e.stopPropagation()
-            setIsSelectingModel(true)
-          }}>
-            {chat.model}
+          <div className="chat-item__actions">
+            <div className="chat-item__model" onClick={(e) => {
+              e.stopPropagation()
+              setIsSelectingModel(true)
+            }}>
+              {chat.model}
+            </div>
+            <button
+              className="chat-item__delete"
+              onClick={handleDelete}
+              title="Delete chat"
+              aria-label="Delete chat"
+            >
+              ×
+            </button>
           </div>
         </>
       )}

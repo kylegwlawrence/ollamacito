@@ -30,3 +30,17 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.message-input__stop-button {
+  background-color: var(--error-color);
+  border-color: var(--error-color);
+  color: white;
+  font-weight: 600;
+  min-width: 80px;
+}
+
+.message-input__stop-button:hover {
+  background-color: #dc2626;
+  border-color: #dc2626;
+  opacity: 0.9;
+}

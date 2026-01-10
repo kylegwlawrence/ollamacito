@@ -1,8 +1,11 @@
 .chat-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   background-color: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
 }
 
 .chat-container--empty {
@@ -31,6 +34,7 @@
 .chat-container__header h2 {
   font-size: 1.25rem;
   font-weight: 600;
+  color: var(--accent-color);
   margin: 0;
 }
 
