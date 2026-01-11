@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useView } from '@/contexts/ViewContext'
 import { useProject } from '@/contexts/ProjectContext'
+import { useToast } from '@/contexts/ToastContext'
 import { projectApi } from '@/services/projectApi'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
@@ -9,6 +10,7 @@ import './ProjectSettings.css'
 export const ProjectSettings = () => {
   const { currentProjectId, navigateToProject, navigateToChat } = useView()
   const { currentProject, setCurrentProject, updateProject, deleteProject } = useProject()
+  const { showToast } = useToast()
 
   const [name, setName] = useState('')
   const [customInstructions, setCustomInstructions] = useState('')
@@ -54,7 +56,7 @@ export const ProjectSettings = () => {
     if (!currentProjectId || !currentProject) return
 
     if (!name.trim()) {
-      alert('Project name cannot be empty')
+      showToast('Project name cannot be empty', 'warning')
       return
     }
 
@@ -74,12 +76,12 @@ export const ProjectSettings = () => {
           files: currentProject.files,
         })
         setHasChanges(false)
-        alert('Project settings saved successfully!')
+        showToast('Project settings saved successfully!', 'success')
       }
     } catch (err) {
       console.error('Failed to save project:', err)
       setError('Failed to save project settings')
-      alert('Failed to save project settings')
+      showToast('Failed to save project settings', 'error')
     } finally {
       setSaving(false)
     }
@@ -99,10 +101,11 @@ export const ProjectSettings = () => {
     try {
       await deleteProject(currentProjectId)
       setCurrentProject(null)
+      showToast('Project deleted successfully', 'success')
       navigateToChat()
     } catch (err) {
       console.error('Failed to delete project:', err)
-      alert('Failed to delete project')
+      showToast('Failed to delete project', 'error')
     }
   }
 

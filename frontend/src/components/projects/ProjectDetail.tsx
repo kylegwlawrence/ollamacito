@@ -4,6 +4,7 @@ import { useProject } from '@/contexts/ProjectContext'
 import { useChat } from '@/contexts/ChatContext'
 import { useChats } from '@/hooks/useChats'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useToast } from '@/contexts/ToastContext'
 import { projectApi } from '@/services/projectApi'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
@@ -17,6 +18,7 @@ export const ProjectDetail = () => {
   const { setCurrentChat } = useChat()
   const { createChat, updateChat, deleteChat } = useChats()
   const { settings } = useSettings()
+  const { showToast } = useToast()
   const [projectChats, setProjectChats] = useState<Chat[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -63,10 +65,12 @@ export const ProjectDetail = () => {
         setProjectChats((prev) => [newChat, ...prev])
         setCurrentChat(newChat)
         navigateToChat()
+      } else {
+        showToast('Failed to create chat', 'error')
       }
     } catch (err) {
       console.error('Failed to create chat:', err)
-      alert('Failed to create chat')
+      showToast('Failed to create chat', 'error')
     }
   }
 

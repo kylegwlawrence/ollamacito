@@ -57,6 +57,7 @@
   max-width: 100%;
   white-space: pre-wrap;
   word-break: break-word;
+  background-color: var(--message-code-bg);
 }
 
 .message__text code {

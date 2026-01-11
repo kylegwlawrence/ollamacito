@@ -5,6 +5,7 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useModels } from '@/hooks/useModels'
 import { useProject } from '@/contexts/ProjectContext'
 import { useView } from '@/contexts/ViewContext'
+import { useToast } from '@/contexts/ToastContext'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ChatItem } from './ChatItem'
@@ -19,6 +20,7 @@ export const Sidebar = () => {
   const { models } = useModels()
   const { projects, loading: projectsLoading, createProject, deleteProject } = useProject()
   const { viewType, currentProjectId, navigateToChat, navigateToProject } = useView()
+  const { showToast } = useToast()
   const [selectedModel, setSelectedModel] = useState<string>(settings.default_model)
   const [projectsExpanded, setProjectsExpanded] = useState(true)
 
@@ -75,13 +77,14 @@ export const Sidebar = () => {
     try {
       const newProject = await createProject(name.trim())
       if (newProject) {
+        showToast('Project created successfully', 'success')
         navigateToProject(newProject.id)
       } else {
-        alert('Failed to create project')
+        showToast('Failed to create project', 'error')
       }
     } catch (err) {
       console.error('Failed to create project:', err)
-      alert('Failed to create project')
+      showToast('Failed to create project', 'error')
     }
   }
 
@@ -94,12 +97,13 @@ export const Sidebar = () => {
 
     try {
       await deleteProject(projectId)
+      showToast('Project deleted successfully', 'success')
       if (currentProjectId === projectId) {
         navigateToChat()
       }
     } catch (err) {
       console.error('Failed to delete project:', err)
-      alert('Failed to delete project')
+      showToast('Failed to delete project', 'error')
     }
   }
 
