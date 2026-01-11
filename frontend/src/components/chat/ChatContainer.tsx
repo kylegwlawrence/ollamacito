@@ -4,6 +4,7 @@ import { MessageInput } from './MessageInput'
 import { useChat } from '@/contexts/ChatContext'
 import { useStreaming } from '@/hooks/useStreaming'
 import { chatApi } from '@/services/chatApi'
+import { ErrorTest } from '../test/ErrorTest'
 import './ChatContainer.css'
 
 export const ChatContainer = () => {
@@ -57,6 +58,8 @@ export const ChatContainer = () => {
           <h2>No chat selected</h2>
           <p>Create a new chat or select one from the sidebar</p>
         </div>
+        {/* Temporary: Error boundary test component */}
+        <ErrorTest />
       </div>
     )
   }
