@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useView } from '@/contexts/ViewContext'
 import { useProject } from '@/contexts/ProjectContext'
-import { useProjects } from '@/hooks/useProjects'
 import { projectApi } from '@/services/projectApi'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
@@ -9,8 +8,7 @@ import './ProjectSettings.css'
 
 export const ProjectSettings = () => {
   const { currentProjectId, navigateToProject, navigateToChat } = useView()
-  const { currentProject, setCurrentProject } = useProject()
-  const { updateProject, deleteProject } = useProjects()
+  const { currentProject, setCurrentProject, updateProject, deleteProject } = useProject()
 
   const [name, setName] = useState('')
   const [customInstructions, setCustomInstructions] = useState('')

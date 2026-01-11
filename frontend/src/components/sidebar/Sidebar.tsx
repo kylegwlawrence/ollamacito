@@ -3,7 +3,7 @@ import { useChat } from '@/contexts/ChatContext'
 import { useChats } from '@/hooks/useChats'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useModels } from '@/hooks/useModels'
-import { useProjects } from '@/hooks/useProjects'
+import { useProject } from '@/contexts/ProjectContext'
 import { useView } from '@/contexts/ViewContext'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
@@ -17,7 +17,7 @@ export const Sidebar = () => {
   const { chats, loading, loadChats, createChat, updateChat, deleteChat } = useChats()
   const { settings } = useSettings()
   const { models } = useModels()
-  const { projects, loading: projectsLoading, createProject, deleteProject } = useProjects()
+  const { projects, loading: projectsLoading, createProject, deleteProject } = useProject()
   const { viewType, currentProjectId, navigateToChat, navigateToProject } = useView()
   const [selectedModel, setSelectedModel] = useState<string>(settings.default_model)
   const [projectsExpanded, setProjectsExpanded] = useState(true)
