@@ -4,12 +4,15 @@ A desktop chat application for interacting with locally-installed Ollama models.
 
 ## Features
 
-- Chat with any Ollama model installed on your machine
-- Streaming responses in real-time
-- Persistent chat history stored in PostgreSQL
-- Per-chat settings (temperature, max tokens, system prompt)
-- Archive and manage multiple conversations
-- Dark mode UI
+- **Projects**: Organize chats into projects with custom instructions
+- **Chat Management**: Create, rename, and delete conversations
+- **Multiple Models**: Switch between any Ollama model installed on your machine
+- **Streaming Responses**: Real-time AI responses with stop capability
+- **Persistent Storage**: All chats and projects saved in PostgreSQL
+- **Error Handling**: Graceful error boundaries prevent app crashes
+- **Accessibility**: Full keyboard navigation and screen reader support
+- **Toast Notifications**: User-friendly feedback for all actions
+- **Dark Mode UI**: Clean, modern interface
 
 ## Prerequisites
 
@@ -85,6 +88,25 @@ make shell-db   # Open PostgreSQL shell
                         │   Port 11434    │
                         └─────────────────┘
 ```
+
+## Usage
+
+### Projects
+1. Click **"+ Create Project"** to create a new project
+2. Navigate to project settings to add custom instructions
+3. Create chats within a project - they will automatically use the project's custom instructions
+4. Delete projects to remove all associated chats
+
+### Standalone Chats
+1. Click **"+ New Chat"** in the header to create a standalone chat
+2. Select a model from the dropdown before creating the chat
+3. Standalone chats appear in the "Chats" section, separate from projects
+
+### Keyboard Shortcuts
+- `Enter`: Send message or activate focused item
+- `Shift + Enter`: New line in message input
+- `Tab`: Navigate between interactive elements
+- `Escape`: Cancel editing (when renaming chats)
 
 ## Troubleshooting
 
