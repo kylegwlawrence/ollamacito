@@ -52,21 +52,23 @@ export const ChatContainer = () => {
 
   if (!currentChat) {
     return (
-      <div className="chat-container chat-container--empty">
+      <main className="chat-container chat-container--empty" role="main" aria-label="Chat area">
         <div className="chat-container__empty-state">
           <h2>No chat selected</h2>
           <p>Create a new chat or select one from the sidebar</p>
         </div>
-      </div>
+      </main>
     )
   }
 
   return (
-    <div className="chat-container">
-      <div className="chat-container__header">
+    <main className="chat-container" role="main" aria-label="Chat conversation">
+      <header className="chat-container__header">
         <h2>{currentChat.title}</h2>
-        <span className="chat-container__model">{currentChat.model}</span>
-      </div>
+        <span className="chat-container__model" aria-label={`Using model ${currentChat.model}`}>
+          {currentChat.model}
+        </span>
+      </header>
       <MessageList
         messages={messages}
         isStreaming={streaming.isStreaming}
@@ -78,6 +80,6 @@ export const ChatContainer = () => {
         isStreaming={streaming.isStreaming}
         onStop={streaming.cancelStream}
       />
-    </div>
+    </main>
   )
 }

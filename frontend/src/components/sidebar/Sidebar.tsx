@@ -113,7 +113,7 @@ export const Sidebar = () => {
   const standaloneChats = chats.filter(chat => !chat.project_id)
 
   return (
-    <div className="sidebar">
+    <nav className="sidebar" aria-label="Main navigation">
       <div className="sidebar__header">
         <h1 className="sidebar__title">Ollama::cito</h1>
         <Button
@@ -121,6 +121,7 @@ export const Sidebar = () => {
           variant="primary"
           size="sm"
           title="Create a new chat"
+          aria-label="Create a new chat"
         >
           + New Chat
         </Button>
@@ -145,19 +146,22 @@ export const Sidebar = () => {
       </div>
 
       {/* Projects Section */}
-      <div className="sidebar__section">
-        <div
+      <section className="sidebar__section" aria-labelledby="projects-heading">
+        <button
           className="sidebar__section-header"
           onClick={() => setProjectsExpanded(!projectsExpanded)}
+          aria-expanded={projectsExpanded}
+          aria-controls="projects-list"
         >
-          <span>{projectsExpanded ? '▼' : '▶'} Projects</span>
-        </div>
+          <span id="projects-heading">{projectsExpanded ? '▼' : '▶'} Projects</span>
+        </button>
 
         {projectsExpanded && (
-          <div className="sidebar__projects">
+          <div id="projects-list" className="sidebar__projects" role="list">
             <button
               className="sidebar__new-button"
               onClick={handleCreateProject}
+              aria-label="Create a new project"
             >
               + Create Project
             </button>
@@ -183,12 +187,12 @@ export const Sidebar = () => {
             )}
           </div>
         )}
-      </div>
+      </section>
 
       {/* Chats Section - Only standalone chats */}
-      <div className="sidebar__section">
+      <section className="sidebar__section" aria-labelledby="chats-heading">
         <div className="sidebar__section-header">
-          <span>Chats</span>
+          <span id="chats-heading">Chats</span>
         </div>
 
         <div className="sidebar__chats">
@@ -216,7 +220,7 @@ export const Sidebar = () => {
             />
           ))}
         </div>
-      </div>
-    </div>
+      </section>
+    </nav>
   )
 }

@@ -51,6 +51,16 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
     <div
       className={`chat-item ${isActive ? 'chat-item--active' : ''}`}
       onClick={() => !isEditing && !isSelectingModel && onSelect(chat)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (!isEditing && !isSelectingModel && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault()
+          onSelect(chat)
+        }
+      }}
+      aria-label={`Chat: ${chat.title}, using model ${chat.model}`}
+      aria-current={isActive ? 'page' : undefined}
     >
       {isEditing ? (
         <input
@@ -62,6 +72,7 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
           onBlur={handleRename}
           onKeyDown={handleKeyDown}
           onClick={(e) => e.stopPropagation()}
+          aria-label="Edit chat title"
         />
       ) : isSelectingModel ? (
         <select
@@ -71,6 +82,7 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
           onChange={(e) => handleModelChange(e.target.value)}
           onBlur={() => setIsSelectingModel(false)}
           onClick={(e) => e.stopPropagation()}
+          aria-label="Select model for chat"
         >
           {models.map((model) => (
             <option key={model.name} value={model.name}>
@@ -90,12 +102,16 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
             {chat.title}
           </div>
           <div className="chat-item__actions">
-            <div className="chat-item__model" onClick={(e) => {
-              e.stopPropagation()
-              setIsSelectingModel(true)
-            }}>
+            <button
+              className="chat-item__model"
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsSelectingModel(true)
+              }}
+              aria-label={`Change model, currently ${chat.model}`}
+            >
               {chat.model}
-            </div>
+            </button>
             <div className="chat-item__buttons">
               <button
                 className="chat-item__edit"
@@ -104,7 +120,7 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
                   setIsEditing(true)
                 }}
                 title="Rename chat"
-                aria-label="Rename chat"
+                aria-label={`Rename chat ${chat.title}`}
               >
                 ✎
               </button>
@@ -112,7 +128,7 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
                 className="chat-item__delete"
                 onClick={handleDelete}
                 title="Delete chat"
-                aria-label="Delete chat"
+                aria-label={`Delete chat ${chat.title}`}
               >
                 ×
               </button>

@@ -40,10 +40,19 @@
   letter-spacing: 0.5px;
   cursor: pointer;
   transition: color var(--transition-fast);
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: inherit;
 }
 
 .chat-item__model:hover {
   color: var(--accent-color);
+}
+
+.chat-item__model:focus {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
 }
 
 .chat-item__input {

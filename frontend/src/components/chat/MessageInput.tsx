@@ -27,7 +27,7 @@ export const MessageInput = ({ onSend, disabled, isStreaming, onStop }: MessageI
   }
 
   return (
-    <div className="message-input">
+    <div className="message-input" role="form" aria-label="Message input">
       <textarea
         className="message-input__textarea"
         placeholder="Type your message... (Shift+Enter for new line)"
@@ -36,12 +36,18 @@ export const MessageInput = ({ onSend, disabled, isStreaming, onStop }: MessageI
         onKeyDown={handleKeyDown}
         disabled={disabled}
         rows={3}
+        aria-label="Type your message"
+        aria-describedby="message-input-hint"
       />
+      <span id="message-input-hint" className="sr-only">
+        Press Enter to send, Shift+Enter for new line
+      </span>
       {isStreaming ? (
         <Button
           onClick={onStop}
           variant="secondary"
           className="message-input__stop-button"
+          aria-label="Stop generating response"
         >
           Stop
         </Button>
@@ -50,6 +56,7 @@ export const MessageInput = ({ onSend, disabled, isStreaming, onStop }: MessageI
           onClick={handleSend}
           disabled={disabled || !message.trim()}
           variant="primary"
+          aria-label="Send message"
         >
           Send
         </Button>
