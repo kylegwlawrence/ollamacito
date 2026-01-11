@@ -24,6 +24,11 @@ class Chat(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=True,
+    )
 
     # Relationships
     messages: Mapped[List["Message"]] = relationship(
@@ -37,6 +42,10 @@ class Chat(Base, TimestampMixin):
         back_populates="chat",
         cascade="all, delete-orphan",
         uselist=False,
+    )
+    project: Mapped[Optional["Project"]] = relationship(
+        "Project",
+        back_populates="chats",
     )
 
     def __repr__(self) -> str:

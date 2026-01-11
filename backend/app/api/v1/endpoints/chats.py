@@ -26,6 +26,7 @@ async def list_chats(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     include_archived: bool = Query(False, description="Include archived chats"),
+    project_id: str = Query(None, description="Filter by project ID (null for standalone chats)"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -35,6 +36,7 @@ async def list_chats(
         page: Page number (1-indexed)
         page_size: Number of items per page
         include_archived: Include archived chats in results
+        project_id: Filter by project ID (if None, returns standalone chats)
         db: Database session
 
     Returns:
@@ -45,6 +47,15 @@ async def list_chats(
         query = select(Chat)
         if not include_archived:
             query = query.where(Chat.is_archived == False)
+
+        # Filter by project_id if provided
+        if project_id is not None:
+            if project_id.lower() == "null" or project_id == "":
+                # Return standalone chats only
+                query = query.where(Chat.project_id.is_(None))
+            else:
+                # Return chats for specific project
+                query = query.where(Chat.project_id == project_id)
 
         # Get total count
         count_query = select(func.count()).select_from(query.subquery())
@@ -67,6 +78,7 @@ async def list_chats(
                 "title": chat.title,
                 "model": chat.model,
                 "is_archived": chat.is_archived,
+                "project_id": chat.project_id,
                 "created_at": chat.created_at,
                 "updated_at": chat.updated_at,
                 "message_count": len(chat.messages),
@@ -119,6 +131,7 @@ async def get_chat(
         title=chat_with_messages.title,
         model=chat_with_messages.model,
         is_archived=chat_with_messages.is_archived,
+        project_id=chat_with_messages.project_id,
         created_at=chat_with_messages.created_at,
         updated_at=chat_with_messages.updated_at,
         message_count=len(sorted_messages),
@@ -145,6 +158,7 @@ async def create_chat(
         new_chat = Chat(
             title=chat_data.title,
             model=chat_data.model,
+            project_id=chat_data.project_id,
         )
         db.add(new_chat)
         await db.flush()
@@ -157,6 +171,7 @@ async def create_chat(
             title=new_chat.title,
             model=new_chat.model,
             is_archived=new_chat.is_archived,
+            project_id=new_chat.project_id,
             created_at=new_chat.created_at,
             updated_at=new_chat.updated_at,
             message_count=0,
@@ -210,6 +225,7 @@ async def update_chat(
         title=chat.title,
         model=chat.model,
         is_archived=chat.is_archived,
+        project_id=chat.project_id,
         created_at=chat.created_at,
         updated_at=chat.updated_at,
         message_count=message_count,
@@ -266,6 +282,7 @@ async def archive_chat(
         title=chat.title,
         model=chat.model,
         is_archived=chat.is_archived,
+        project_id=chat.project_id,
         created_at=chat.created_at,
         updated_at=chat.updated_at,
         message_count=message_count,

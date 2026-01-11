@@ -1,0 +1,96 @@
+.project-item {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background-color var(--transition-fast);
+  gap: 0.75rem;
+  user-select: none;
+}
+
+.project-item:hover {
+  background-color: var(--bg-tertiary);
+}
+
+.project-item--active {
+  background-color: var(--accent-color);
+  color: var(--bg-primary);
+}
+
+.project-item--active .project-item__icon,
+.project-item--active .project-item__name,
+.project-item--active .project-item__badge {
+  color: var(--bg-primary);
+}
+
+.project-item__icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.project-item__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.project-item__badge {
+  background-color: var(--accent-color);
+  color: var(--bg-primary);
+  padding: 0.125rem 0.5rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.project-item--active .project-item__badge {
+  background-color: var(--bg-primary);
+  color: var(--accent-color);
+}
+
+.project-item__delete {
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.project-item:hover .project-item__delete {
+  opacity: 1;
+}
+
+.project-item__delete:hover {
+  background-color: var(--error-color);
+  color: white;
+}
+
+.project-item--active .project-item__delete {
+  color: var(--bg-primary);
+}
+
+.project-item--active .project-item__delete:hover {
+  background-color: rgba(0, 0, 0, 0.2);
+  color: white;
+}
+
+.project-item__delete:active {
+  transform: scale(0.95);
+}

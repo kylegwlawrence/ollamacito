@@ -80,7 +80,13 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
         </select>
       ) : (
         <>
-          <div className="chat-item__title" onDoubleClick={() => setIsEditing(true)}>
+          <div
+            className="chat-item__title"
+            onDoubleClick={(e) => {
+              e.stopPropagation()
+              setIsEditing(true)
+            }}
+          >
             {chat.title}
           </div>
           <div className="chat-item__actions">
@@ -90,14 +96,27 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
             }}>
               {chat.model}
             </div>
-            <button
-              className="chat-item__delete"
-              onClick={handleDelete}
-              title="Delete chat"
-              aria-label="Delete chat"
-            >
-              ×
-            </button>
+            <div className="chat-item__buttons">
+              <button
+                className="chat-item__edit"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsEditing(true)
+                }}
+                title="Rename chat"
+                aria-label="Rename chat"
+              >
+                ✎
+              </button>
+              <button
+                className="chat-item__delete"
+                onClick={handleDelete}
+                title="Delete chat"
+                aria-label="Delete chat"
+              >
+                ×
+              </button>
+            </div>
           </div>
         </>
       )}

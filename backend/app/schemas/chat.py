@@ -18,7 +18,7 @@ class ChatBase(BaseModel):
 class ChatCreate(ChatBase):
     """Schema for creating a new chat."""
 
-    pass
+    project_id: Optional[UUID] = Field(None, description="Optional project ID to associate chat with")
 
 
 class ChatUpdate(BaseModel):
@@ -34,6 +34,7 @@ class ChatResponse(ChatBase):
 
     id: UUID
     is_archived: bool
+    project_id: Optional[UUID] = Field(None, description="Project ID if chat belongs to a project")
     created_at: datetime
     updated_at: datetime
     message_count: Optional[int] = Field(None, description="Number of messages in chat")

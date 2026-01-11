@@ -27,8 +27,9 @@
   border-bottom: 1px solid var(--border-color);
   background-color: var(--bg-secondary);
   display: flex;
-  align-items: center;
+  align-items: left;
   justify-content: space-between;
+  flex-direction: column;
 }
 
 .chat-container__header h2 {
@@ -39,10 +40,8 @@
 }
 
 .chat-container__model {
-  padding: 0.25rem 0.75rem;
-  background-color: var(--bg-secondary);
   color: var(--accent-color);
-  border-radius: var(--radius-sm);
   font-size: 0.875rem;
   font-weight: 500;
+  color: var(--text-tertiary);
 }

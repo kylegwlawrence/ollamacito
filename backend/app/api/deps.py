@@ -59,3 +59,35 @@ async def get_chat_or_404(
         )
 
     return chat
+
+
+async def get_project_or_404(
+    project_id: Annotated[UUID, Path(description="Project UUID")],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Dependency to get a project by ID or raise 404.
+
+    Args:
+        project_id: Project UUID from path
+        db: Database session
+
+    Returns:
+        Project: The project object
+
+    Raises:
+        HTTPException: 404 if project not found
+    """
+    from app.db.models import Project
+
+    query = select(Project).where(Project.id == project_id)
+    result = await db.execute(query)
+    project = result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    return project

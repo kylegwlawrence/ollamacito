@@ -5,6 +5,7 @@ export interface Chat {
   title: string
   model: string
   is_archived: boolean
+  project_id?: string | null
   created_at: string
   updated_at: string
   message_count?: number
@@ -13,6 +14,7 @@ export interface Chat {
 export interface ChatCreate {
   title: string
   model: string
+  project_id?: string | null
 }
 
 export interface ChatUpdate {

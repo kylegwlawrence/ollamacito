@@ -3,9 +3,13 @@ import { useChat } from '@/contexts/ChatContext'
 import { useChats } from '@/hooks/useChats'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useModels } from '@/hooks/useModels'
+import { useProjects } from '@/hooks/useProjects'
+import { useView } from '@/contexts/ViewContext'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ChatItem } from './ChatItem'
+import { ProjectItem } from './ProjectItem'
+import type { Chat } from '@/types'
 import './Sidebar.css'
 
 export const Sidebar = () => {
@@ -13,7 +17,10 @@ export const Sidebar = () => {
   const { chats, loading, loadChats, createChat, updateChat, deleteChat } = useChats()
   const { settings } = useSettings()
   const { models } = useModels()
+  const { projects, loading: projectsLoading, createProject, deleteProject } = useProjects()
+  const { viewType, currentProjectId, navigateToChat, navigateToProject } = useView()
   const [selectedModel, setSelectedModel] = useState<string>(settings.default_model)
+  const [projectsExpanded, setProjectsExpanded] = useState(true)
 
   useEffect(() => {
     loadChats()
@@ -56,6 +63,49 @@ export const Sidebar = () => {
     }
   }
 
+  const handleSelectChat = (chat: Chat) => {
+    setCurrentChat(chat)
+    navigateToChat()
+  }
+
+  const handleCreateProject = async () => {
+    const name = window.prompt('Enter project name:')
+    if (!name?.trim()) return
+
+    try {
+      const newProject = await createProject(name.trim())
+      if (newProject) {
+        navigateToProject(newProject.id)
+      } else {
+        alert('Failed to create project')
+      }
+    } catch (err) {
+      console.error('Failed to create project:', err)
+      alert('Failed to create project')
+    }
+  }
+
+  const handleDeleteProject = async (projectId: string, chatCount: number) => {
+    const msg = chatCount > 0
+      ? `Delete this project and its ${chatCount} chat(s)? This action cannot be undone.`
+      : 'Delete this project? This action cannot be undone.'
+
+    if (!window.confirm(msg)) return
+
+    try {
+      await deleteProject(projectId)
+      if (currentProjectId === projectId) {
+        navigateToChat()
+      }
+    } catch (err) {
+      console.error('Failed to delete project:', err)
+      alert('Failed to delete project')
+    }
+  }
+
+  // Filter standalone chats (not in any project)
+  const standaloneChats = chats.filter(chat => !chat.project_id)
+
   return (
     <div className="sidebar">
       <div className="sidebar__header">
@@ -88,30 +138,78 @@ export const Sidebar = () => {
         </div>
       </div>
 
-      <div className="sidebar__chats">
-        {loading && (
-          <div className="sidebar__loading">
-            <LoadingSpinner />
+      {/* Projects Section */}
+      <div className="sidebar__section">
+        <div
+          className="sidebar__section-header"
+          onClick={() => setProjectsExpanded(!projectsExpanded)}
+        >
+          <span>{projectsExpanded ? '▼' : '▶'} Projects</span>
+        </div>
+
+        {projectsExpanded && (
+          <div className="sidebar__projects">
+            <button
+              className="sidebar__new-button"
+              onClick={handleCreateProject}
+            >
+              + Create Project
+            </button>
+
+            {projectsLoading ? (
+              <div className="sidebar__loading">
+                <LoadingSpinner />
+              </div>
+            ) : projects.length === 0 ? (
+              <div className="sidebar__empty">
+                <p>No projects yet. Create one to organize your chats!</p>
+              </div>
+            ) : (
+              projects.map((project) => (
+                <ProjectItem
+                  key={project.id}
+                  project={project}
+                  isActive={viewType === 'project-detail' && currentProjectId === project.id}
+                  onSelect={() => navigateToProject(project.id)}
+                  onDelete={() => handleDeleteProject(project.id, project.chat_count)}
+                />
+              ))
+            )}
           </div>
         )}
+      </div>
 
-        {!loading && chats.length === 0 && (
-          <div className="sidebar__empty">
-            <p>No chats yet. Create one to get started!</p>
-          </div>
-        )}
+      {/* Chats Section - Only standalone chats */}
+      <div className="sidebar__section">
+        <div className="sidebar__section-header">
+          <span>Chats</span>
+        </div>
 
-        {chats.map((chat) => (
-          <ChatItem
-            key={chat.id}
-            chat={chat}
-            isActive={currentChat?.id === chat.id}
-            onSelect={setCurrentChat}
-            onRename={handleRename}
-            onChangeModel={handleChangeModel}
-            onDelete={handleDelete}
-          />
-        ))}
+        <div className="sidebar__chats">
+          {loading && (
+            <div className="sidebar__loading">
+              <LoadingSpinner />
+            </div>
+          )}
+
+          {!loading && standaloneChats.length === 0 && (
+            <div className="sidebar__empty">
+              <p>No standalone chats yet.</p>
+            </div>
+          )}
+
+          {standaloneChats.map((chat) => (
+            <ChatItem
+              key={chat.id}
+              chat={chat}
+              isActive={currentChat?.id === chat.id}
+              onSelect={handleSelectChat}
+              onRename={handleRename}
+              onChangeModel={handleChangeModel}
+              onDelete={handleDelete}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )

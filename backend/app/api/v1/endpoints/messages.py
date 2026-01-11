@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_chat_or_404, get_db
 from app.core.logging import get_logger
-from app.db.models import Chat, ChatSettings, Message, Settings
+from app.db.models import Chat, ChatSettings, Message, Project, Settings
 from app.schemas.message import MessageCreate, MessageListResponse, MessageResponse
 from app.services.ollama_service import ollama_service
 from app.utils.exceptions import OllamaConnectionError
@@ -175,11 +175,28 @@ async def stream_chat_response(
                 {"role": msg.role, "content": msg.content} for msg in history
             ]
 
-            # Add system prompt if exists
+            # Build system prompt with project context
+            system_prompt_parts = []
+
+            # Add project context if chat belongs to a project
+            if chat.project_id:
+                project_query = select(Project).where(Project.id == chat.project_id)
+                result = await session.execute(project_query)
+                project = result.scalar_one_or_none()
+
+                if project and project.custom_instructions:
+                    system_prompt_parts.append("Project Context:")
+                    system_prompt_parts.append(project.custom_instructions)
+                    system_prompt_parts.append("")  # Empty line for spacing
+
+            # Add chat-specific system prompt if exists
             if chat_settings and chat_settings.system_prompt:
-                ollama_messages.insert(
-                    0, {"role": "system", "content": chat_settings.system_prompt}
-                )
+                system_prompt_parts.append(chat_settings.system_prompt)
+
+            # Insert combined system prompt if we have any content
+            if system_prompt_parts:
+                combined_prompt = "\n".join(system_prompt_parts)
+                ollama_messages.insert(0, {"role": "system", "content": combined_prompt})
 
             # Add new user message
             ollama_messages.append({"role": "user", "content": message})

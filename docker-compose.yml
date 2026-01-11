@@ -29,11 +29,11 @@ services:
     container_name: ollama_backend
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ollama_chat}
-      OLLAMA_BASE_URL: http://host.docker.internal:11434
-      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
-      DEBUG: true
-      LOG_LEVEL: debug
-      DEFAULT_MODEL: qwen2.5-coder:14b
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      DEBUG: ${DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-qwen2.5-coder:14b}
     ports:
       - "8000:8000"
     depends_on:
