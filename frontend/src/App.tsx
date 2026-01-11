@@ -6,30 +6,43 @@ import { ProjectProvider } from './contexts/ProjectContext'
 import { ChatProvider } from './contexts/ChatContext'
 import { Sidebar } from './components/sidebar/Sidebar'
 import { ToastContainer } from './components/common/ToastContainer'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
 import MainContent from './components/MainContent'
 import './App.css'
 
 function App() {
   return (
-    <ThemeProvider>
-      <SettingsProvider>
-        <ToastProvider>
-          <ViewProvider>
-            <ProjectProvider>
-              <ChatProvider>
-                <div className="app">
-                  <Sidebar />
-                  <div className="app__main">
-                    <MainContent />
+    <ErrorBoundary>
+      <ThemeProvider>
+        <SettingsProvider>
+          <ToastProvider>
+            <ViewProvider>
+              <ProjectProvider>
+                <ChatProvider>
+                  <div className="app">
+                    <ErrorBoundary
+                      fallback={
+                        <div style={{ padding: '2rem', textAlign: 'center' }}>
+                          <p>Failed to load sidebar. Please refresh the page.</p>
+                        </div>
+                      }
+                    >
+                      <Sidebar />
+                    </ErrorBoundary>
+                    <div className="app__main">
+                      <ErrorBoundary>
+                        <MainContent />
+                      </ErrorBoundary>
+                    </div>
                   </div>
-                </div>
-                <ToastContainer />
-              </ChatProvider>
-            </ProjectProvider>
-          </ViewProvider>
-        </ToastProvider>
-      </SettingsProvider>
-    </ThemeProvider>
+                  <ToastContainer />
+                </ChatProvider>
+              </ProjectProvider>
+            </ViewProvider>
+          </ToastProvider>
+        </SettingsProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   )
 }
 
