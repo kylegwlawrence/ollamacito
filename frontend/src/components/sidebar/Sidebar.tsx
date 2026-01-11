@@ -99,6 +99,8 @@ export const Sidebar = () => {
       await deleteProject(projectId)
       showToast('Project deleted successfully', 'success')
       if (currentProjectId === projectId) {
+        // Clear chat state to show clean landing page
+        setCurrentChat(null)
         navigateToChat()
       }
     } catch (err) {

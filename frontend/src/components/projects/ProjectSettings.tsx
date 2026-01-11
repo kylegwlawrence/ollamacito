@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useView } from '@/contexts/ViewContext'
 import { useProject } from '@/contexts/ProjectContext'
+import { useChat } from '@/contexts/ChatContext'
 import { useToast } from '@/contexts/ToastContext'
 import { projectApi } from '@/services/projectApi'
 import { Button } from '../common/Button'
@@ -10,6 +11,7 @@ import './ProjectSettings.css'
 export const ProjectSettings = () => {
   const { currentProjectId, navigateToProject, navigateToChat } = useView()
   const { currentProject, setCurrentProject, updateProject, deleteProject } = useProject()
+  const { setCurrentChat, setMessages } = useChat()
   const { showToast } = useToast()
 
   const [name, setName] = useState('')
@@ -101,6 +103,9 @@ export const ProjectSettings = () => {
     try {
       await deleteProject(currentProjectId)
       setCurrentProject(null)
+      // Clear chat state to show clean landing page
+      setCurrentChat(null)
+      setMessages([])
       showToast('Project deleted successfully', 'success')
       navigateToChat()
     } catch (err) {
