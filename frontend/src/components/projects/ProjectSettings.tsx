@@ -3,6 +3,8 @@ import { useView } from '@/contexts/ViewContext'
 import { useProject } from '@/contexts/ProjectContext'
 import { useChat } from '@/contexts/ChatContext'
 import { useToast } from '@/contexts/ToastContext'
+import { useModels } from '@/hooks/useModels'
+import { useSettings } from '@/contexts/SettingsContext'
 import { projectApi } from '@/services/projectApi'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
@@ -13,9 +15,14 @@ export const ProjectSettings = () => {
   const { currentProject, setCurrentProject, updateProject, deleteProject } = useProject()
   const { setCurrentChat, setMessages } = useChat()
   const { showToast } = useToast()
+  const { models } = useModels()
+  const { settings } = useSettings()
 
   const [name, setName] = useState('')
   const [customInstructions, setCustomInstructions] = useState('')
+  const [defaultModel, setDefaultModel] = useState<string>('')
+  const [temperature, setTemperature] = useState<string>('')
+  const [maxTokens, setMaxTokens] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,9 +38,12 @@ export const ProjectSettings = () => {
     if (currentProject) {
       const nameChanged = name !== currentProject.name
       const instructionsChanged = customInstructions !== (currentProject.custom_instructions || '')
-      setHasChanges(nameChanged || instructionsChanged)
+      const modelChanged = defaultModel !== (currentProject.default_model || '')
+      const tempChanged = temperature !== (currentProject.temperature?.toString() || '')
+      const tokensChanged = maxTokens !== (currentProject.max_tokens?.toString() || '')
+      setHasChanges(nameChanged || instructionsChanged || modelChanged || tempChanged || tokensChanged)
     }
-  }, [name, customInstructions, currentProject])
+  }, [name, customInstructions, defaultModel, temperature, maxTokens, currentProject])
 
   const loadProject = async () => {
     if (!currentProjectId) return
@@ -46,6 +56,9 @@ export const ProjectSettings = () => {
       setCurrentProject(project)
       setName(project.name)
       setCustomInstructions(project.custom_instructions || '')
+      setDefaultModel(project.default_model || '')
+      setTemperature(project.temperature?.toString() || '')
+      setMaxTokens(project.max_tokens?.toString() || '')
     } catch (err) {
       console.error('Failed to load project:', err)
       setError('Failed to load project')
@@ -69,6 +82,9 @@ export const ProjectSettings = () => {
       const updated = await updateProject(currentProjectId, {
         name: name.trim(),
         custom_instructions: customInstructions.trim() || undefined,
+        default_model: defaultModel.trim() || undefined,
+        temperature: temperature ? parseFloat(temperature) : undefined,
+        max_tokens: maxTokens ? parseInt(maxTokens, 10) : undefined,
       })
 
       if (updated) {
@@ -131,6 +147,9 @@ export const ProjectSettings = () => {
     if (currentProject) {
       setName(currentProject.name)
       setCustomInstructions(currentProject.custom_instructions || '')
+      setDefaultModel(currentProject.default_model || '')
+      setTemperature(currentProject.temperature?.toString() || '')
+      setMaxTokens(currentProject.max_tokens?.toString() || '')
       setHasChanges(false)
     }
   }
@@ -211,6 +230,78 @@ export const ProjectSettings = () => {
           <span className="project-settings__hint">
             These instructions will be sent with every message in project chats
           </span>
+        </div>
+
+        {/* Model Settings Section */}
+        <div className="project-settings__section">
+          <h3 className="project-settings__section-title">Model Settings</h3>
+          <p className="project-settings__section-description">
+            Override global defaults for this project. Leave blank to use global settings.
+          </p>
+
+          {/* Default Model */}
+          <div className="project-settings__field">
+            <label htmlFor="default-model" className="project-settings__label">
+              Default Model
+            </label>
+            <select
+              id="default-model"
+              className="project-settings__select"
+              value={defaultModel}
+              onChange={(e) => setDefaultModel(e.target.value)}
+            >
+              <option value="">Use Global Default ({settings.default_model})</option>
+              {models.map((model) => (
+                <option key={model.name} value={model.name}>
+                  {model.name}
+                </option>
+              ))}
+            </select>
+            <span className="project-settings__hint">
+              Model used when creating new chats in this project
+            </span>
+          </div>
+
+          {/* Temperature */}
+          <div className="project-settings__field">
+            <label htmlFor="temperature" className="project-settings__label">
+              Temperature
+            </label>
+            <input
+              id="temperature"
+              type="number"
+              className="project-settings__input"
+              value={temperature}
+              onChange={(e) => setTemperature(e.target.value)}
+              placeholder={`Global default: ${settings.default_temperature}`}
+              min="0"
+              max="2"
+              step="0.1"
+            />
+            <span className="project-settings__hint">
+              Controls randomness (0.0-2.0). Lower = more focused, higher = more creative.
+            </span>
+          </div>
+
+          {/* Max Tokens */}
+          <div className="project-settings__field">
+            <label htmlFor="max-tokens" className="project-settings__label">
+              Max Tokens
+            </label>
+            <input
+              id="max-tokens"
+              type="number"
+              className="project-settings__input"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(e.target.value)}
+              placeholder={`Global default: ${settings.default_max_tokens}`}
+              min="1"
+              step="1"
+            />
+            <span className="project-settings__hint">
+              Context window size (maximum tokens for input and output combined)
+            </span>
+          </div>
         </div>
 
         {/* Actions */}

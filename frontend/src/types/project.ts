@@ -7,6 +7,9 @@ export interface Project {
   name: string
   custom_instructions: string | null
   is_archived: boolean
+  default_model?: string | null
+  temperature?: number | null
+  max_tokens?: number | null
   created_at: string
   updated_at: string
 }
@@ -41,12 +44,18 @@ export interface ProjectWithDetails extends ProjectResponse {
 export interface ProjectCreate {
   name: string
   custom_instructions?: string
+  default_model?: string
+  temperature?: number
+  max_tokens?: number
 }
 
 export interface ProjectUpdate {
   name?: string
   custom_instructions?: string
   is_archived?: boolean
+  default_model?: string
+  temperature?: number
+  max_tokens?: number
 }
 
 export interface ProjectListResponse {

@@ -3,6 +3,7 @@ import { MessageList } from './MessageList'
 import { MessageInput } from './MessageInput'
 import { useChat } from '@/contexts/ChatContext'
 import { useProject } from '@/contexts/ProjectContext'
+import { useView } from '@/contexts/ViewContext'
 import { useStreaming } from '@/hooks/useStreaming'
 import { chatApi } from '@/services/chatApi'
 import './ChatContainer.css'
@@ -10,6 +11,7 @@ import './ChatContainer.css'
 export const ChatContainer = () => {
   const { currentChat, messages, setMessages } = useChat()
   const { currentProject } = useProject()
+  const { navigateToProject } = useView()
   const streaming = useStreaming(() => {
     // Reload messages after streaming completes
     if (currentChat) {
@@ -71,7 +73,19 @@ export const ChatContainer = () => {
   return (
     <main className="chat-container" role="main" aria-label="Chat conversation">
       <header className="chat-container__header">
-        <h2>{currentChat.title}</h2>
+        <div className="chat-container__header-left">
+          {currentChat.project_id && (
+            <button
+              className="chat-container__back-button"
+              onClick={() => navigateToProject(currentChat.project_id!)}
+              title="Back to project"
+              aria-label="Back to project"
+            >
+              ← Back to Project
+            </button>
+          )}
+          <h2>{currentChat.title}</h2>
+        </div>
         <span className="chat-container__model" aria-label={`Using model ${currentChat.model}`}>
           {currentChat.model}
         </span>

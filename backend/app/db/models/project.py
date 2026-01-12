@@ -4,7 +4,7 @@ Database models for projects and project files.
 import uuid
 from typing import List, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,6 +25,11 @@ class Project(Base, TimestampMixin):
     custom_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # Project-specific model settings (override global defaults)
+    default_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     # Relationships
     chats: Mapped[List["Chat"]] = relationship(
         "Chat",
@@ -37,6 +42,17 @@ class Project(Base, TimestampMixin):
         back_populates="project",
         cascade="all, delete-orphan",
         lazy="selectin",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "temperature IS NULL OR (temperature >= 0.0 AND temperature <= 2.0)",
+            name="valid_project_temperature",
+        ),
+        CheckConstraint(
+            "max_tokens IS NULL OR max_tokens > 0",
+            name="positive_project_tokens",
+        ),
     )
 
     def __repr__(self) -> str:

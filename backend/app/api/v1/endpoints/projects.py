@@ -69,6 +69,9 @@ async def list_projects(
                 "id": project.id,
                 "name": project.name,
                 "custom_instructions": project.custom_instructions,
+                "default_model": project.default_model,
+                "temperature": project.temperature,
+                "max_tokens": project.max_tokens,
                 "is_archived": project.is_archived,
                 "created_at": project.created_at,
                 "updated_at": project.updated_at,
@@ -122,6 +125,9 @@ async def get_project(
         id=project_with_details.id,
         name=project_with_details.name,
         custom_instructions=project_with_details.custom_instructions,
+        default_model=project_with_details.default_model,
+        temperature=project_with_details.temperature,
+        max_tokens=project_with_details.max_tokens,
         is_archived=project_with_details.is_archived,
         created_at=project_with_details.created_at,
         updated_at=project_with_details.updated_at,
@@ -150,6 +156,9 @@ async def create_project(
         new_project = Project(
             name=project_data.name,
             custom_instructions=project_data.custom_instructions,
+            default_model=project_data.default_model,
+            temperature=project_data.temperature,
+            max_tokens=project_data.max_tokens,
         )
         db.add(new_project)
         await db.flush()
@@ -161,6 +170,9 @@ async def create_project(
             id=new_project.id,
             name=new_project.name,
             custom_instructions=new_project.custom_instructions,
+            default_model=new_project.default_model,
+            temperature=new_project.temperature,
+            max_tokens=new_project.max_tokens,
             is_archived=new_project.is_archived,
             created_at=new_project.created_at,
             updated_at=new_project.updated_at,
@@ -200,6 +212,12 @@ async def update_project(
         project.custom_instructions = project_data.custom_instructions
     if project_data.is_archived is not None:
         project.is_archived = project_data.is_archived
+    if project_data.default_model is not None:
+        project.default_model = project_data.default_model
+    if project_data.temperature is not None:
+        project.temperature = project_data.temperature
+    if project_data.max_tokens is not None:
+        project.max_tokens = project_data.max_tokens
 
     await db.flush()
     await db.refresh(project)
@@ -219,6 +237,9 @@ async def update_project(
         id=project.id,
         name=project.name,
         custom_instructions=project.custom_instructions,
+        default_model=project.default_model,
+        temperature=project.temperature,
+        max_tokens=project.max_tokens,
         is_archived=project.is_archived,
         created_at=project.created_at,
         updated_at=project.updated_at,

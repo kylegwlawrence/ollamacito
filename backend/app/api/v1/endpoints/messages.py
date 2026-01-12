@@ -141,28 +141,46 @@ async def stream_chat_response(
                 yield f"data: {error_data}\n\n"
                 return
 
-            # Get chat settings or use defaults
+            # Get global settings
             settings_query = select(Settings).where(Settings.id == 1)
             result = await session.execute(settings_query)
             global_settings = result.scalar_one_or_none()
 
+            # Get chat settings
             chat_settings_query = select(ChatSettings).where(
                 ChatSettings.chat_id == chat_id
             )
             result = await session.execute(chat_settings_query)
             chat_settings = result.scalar_one_or_none()
 
-            # Determine settings to use
-            temperature = (
-                chat_settings.temperature
-                if chat_settings and chat_settings.temperature is not None
-                else (global_settings.default_temperature if global_settings else 0.7)
-            )
-            max_tokens = (
-                chat_settings.max_tokens
-                if chat_settings and chat_settings.max_tokens is not None
-                else (global_settings.default_max_tokens if global_settings else 2048)
-            )
+            # Get project settings if chat belongs to a project (query executed later for custom_instructions)
+            project = None
+            if chat.project_id:
+                project_query = select(Project).where(Project.id == chat.project_id)
+                result = await session.execute(project_query)
+                project = result.scalar_one_or_none()
+
+            # Determine temperature: chat → project → global → hardcoded default
+            temperature = None
+            if chat_settings and chat_settings.temperature is not None:
+                temperature = chat_settings.temperature
+            elif project and project.temperature is not None:
+                temperature = project.temperature
+            elif global_settings:
+                temperature = global_settings.default_temperature
+            else:
+                temperature = 0.7
+
+            # Determine max_tokens: chat → project → global → hardcoded default
+            max_tokens = None
+            if chat_settings and chat_settings.max_tokens is not None:
+                max_tokens = chat_settings.max_tokens
+            elif project and project.max_tokens is not None:
+                max_tokens = project.max_tokens
+            elif global_settings:
+                max_tokens = global_settings.default_max_tokens
+            else:
+                max_tokens = 2048
 
             # Get chat history
             messages_query = (
@@ -181,16 +199,11 @@ async def stream_chat_response(
             # Build system prompt with project context
             system_prompt_parts = []
 
-            # Add project context if chat belongs to a project
-            if chat.project_id:
-                project_query = select(Project).where(Project.id == chat.project_id)
-                result = await session.execute(project_query)
-                project = result.scalar_one_or_none()
-
-                if project and project.custom_instructions:
-                    system_prompt_parts.append("Project Context:")
-                    system_prompt_parts.append(project.custom_instructions)
-                    system_prompt_parts.append("")  # Empty line for spacing
+            # Add project context if project exists and has custom instructions
+            if project and project.custom_instructions:
+                system_prompt_parts.append("Project Context:")
+                system_prompt_parts.append(project.custom_instructions)
+                system_prompt_parts.append("")  # Empty line for spacing
 
             # Add chat-specific system prompt if exists
             if chat_settings and chat_settings.system_prompt:

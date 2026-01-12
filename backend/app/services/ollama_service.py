@@ -124,7 +124,7 @@ class OllamaService:
             if temperature is not None:
                 options["temperature"] = temperature
             if max_tokens is not None:
-                options["num_predict"] = max_tokens
+                options["num_ctx"] = max_tokens
 
             logger.info(f"Sending chat request to model '{model}'")
             response = await self.client.chat(
@@ -171,7 +171,7 @@ class OllamaService:
             if temperature is not None:
                 options["temperature"] = temperature
             if max_tokens is not None:
-                options["num_predict"] = max_tokens
+                options["num_ctx"] = max_tokens
 
             logger.info(f"Starting streaming chat with model '{model}'")
 

@@ -15,6 +15,15 @@ class ProjectBase(BaseModel):
     custom_instructions: Optional[str] = Field(
         None, description="Custom instructions for the AI in this project"
     )
+    default_model: Optional[str] = Field(
+        None, min_length=1, max_length=100, description="Default model for new chats in this project"
+    )
+    temperature: Optional[float] = Field(
+        None, ge=0.0, le=2.0, description="Temperature override for this project"
+    )
+    max_tokens: Optional[int] = Field(
+        None, gt=0, description="Max tokens override for this project"
+    )
 
 
 class ProjectCreate(ProjectBase):
@@ -29,6 +38,9 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     custom_instructions: Optional[str] = None
     is_archived: Optional[bool] = None
+    default_model: Optional[str] = Field(None, min_length=1, max_length=100)
+    temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
+    max_tokens: Optional[int] = Field(None, gt=0)
 
 
 class ProjectFileResponse(BaseModel):

@@ -26,7 +26,9 @@ export const ProjectDetail = () => {
   const [projectChats, setProjectChats] = useState<Chat[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedModel, setSelectedModel] = useState<string>(settings.default_model)
+  const [selectedModel, setSelectedModel] = useState<string>(
+    currentProject?.default_model || settings.default_model
+  )
 
   useEffect(() => {
     if (currentProjectId) {
@@ -35,8 +37,9 @@ export const ProjectDetail = () => {
   }, [currentProjectId])
 
   useEffect(() => {
-    setSelectedModel(settings.default_model)
-  }, [settings.default_model])
+    const modelToUse = currentProject?.default_model || settings.default_model
+    setSelectedModel(modelToUse)
+  }, [currentProject?.default_model, settings.default_model, currentProject])
 
   const loadProjectData = async () => {
     if (!currentProjectId) return
@@ -185,6 +188,8 @@ export const ProjectDetail = () => {
                 {models.map((model) => (
                   <option key={model.name} value={model.name}>
                     {model.name}
+                    {currentProject.default_model === model.name ? ' (Project Default)' : ''}
+                    {!currentProject.default_model && settings.default_model === model.name ? ' (Global Default)' : ''}
                   </option>
                 ))}
               </select>
