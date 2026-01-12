@@ -109,7 +109,7 @@
 
 .chat-item__edit,
 .chat-item__delete {
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   width: 1.5rem;
@@ -124,11 +124,14 @@
   cursor: pointer;
   transition: all var(--transition-fast);
   flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .chat-item:hover .chat-item__edit,
 .chat-item:hover .chat-item__delete {
-  display: flex;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .chat-item__edit {

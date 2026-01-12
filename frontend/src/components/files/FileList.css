@@ -7,7 +7,7 @@
 .file-list--empty {
   padding: 2rem 1rem;
   text-align: center;
-  color: var(--color-text-secondary);
+  color: var(--text-secondary);
 }
 
 .file-list--empty p:first-child {
@@ -20,10 +20,10 @@
 }
 
 .file-item {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--color-bg-secondary);
+  background: var(--bg-secondary);
 }
 
 .file-item__header {
@@ -48,7 +48,7 @@
 }
 
 .file-item__info:hover .file-item__name {
-  color: var(--color-primary);
+  color: var(--accent-color);
 }
 
 .file-item__icon {
@@ -65,8 +65,9 @@
 }
 
 .file-item__name {
-  font-weight: 500;
-  color: var(--color-text-primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -75,19 +76,19 @@
 
 .file-item__meta {
   font-size: 0.75rem;
-  color: var(--color-text-secondary);
+  color: var(--text-secondary);
 }
 
 .file-item__preview {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--border-color);
   padding: 0.75rem;
-  background: var(--color-bg-primary);
+  background: var(--bg-primary);
 }
 
 .file-item__preview-label {
   font-size: 0.75rem;
   font-weight: 500;
-  color: var(--color-text-secondary);
+  color: var(--text-secondary);
   margin-bottom: 0.5rem;
 }
 
@@ -95,8 +96,8 @@
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.75rem;
   line-height: 1.4;
-  color: var(--color-text-primary);
-  background: var(--color-bg-tertiary, #1a1a1a);
+  color: var(--text-primary);
+  background: var(--bg-tertiary, #1a1a1a);
   padding: 0.75rem;
   border-radius: 4px;
   overflow-x: auto;
