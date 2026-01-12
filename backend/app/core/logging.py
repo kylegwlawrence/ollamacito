@@ -22,17 +22,25 @@ class ColoredFormatter(logging.Formatter):
     reset = "\x1b[0m"
 
     FORMATS = {
-        logging.DEBUG: grey + "%(levelname)s" + reset + " - %(message)s",
-        logging.INFO: blue + "%(levelname)s" + reset + " - %(message)s",
-        logging.WARNING: yellow + "%(levelname)s" + reset + " - %(message)s",
-        logging.ERROR: red + "%(levelname)s" + reset + " - %(message)s",
-        logging.CRITICAL: bold_red + "%(levelname)s" + reset + " - %(message)s",
+        logging.DEBUG: grey + "%(asctime)s %(levelname)s" + reset + " - %(message)s",
+        logging.INFO: blue + "%(asctime)s %(levelname)s" + reset + " - %(message)s",
+        logging.WARNING: yellow + "%(asctime)s %(levelname)s" + reset + " - %(message)s",
+        logging.ERROR: red + "%(asctime)s %(levelname)s" + reset + " - %(message)s",
+        logging.CRITICAL: bold_red + "%(asctime)s %(levelname)s" + reset + " - %(message)s",
     }
 
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt, datefmt="%Y-%m-%d %H:%M:%S")
-        return formatter.format(record)
+        # Add milliseconds manually
+        result = formatter.format(record)
+        # Insert milliseconds after the seconds
+        import datetime
+        dt = datetime.datetime.fromtimestamp(record.created)
+        ms = f".{int((record.created % 1) * 1000):03d}"
+        # Replace first occurrence of time format with time+ms
+        result = result.replace(dt.strftime("%H:%M:%S"), dt.strftime("%H:%M:%S") + ms, 1)
+        return result
 
 
 def setup_logging() -> None:

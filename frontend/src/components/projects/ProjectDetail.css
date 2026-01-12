@@ -248,6 +248,17 @@
   transition: all 0.2s ease;
 }
 
+/* Remove number input spinner arrows */
+.project-detail__input[type="number"]::-webkit-outer-spin-button,
+.project-detail__input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.project-detail__input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 .project-detail__input:focus,
 .project-detail__select:focus {
   outline: none;

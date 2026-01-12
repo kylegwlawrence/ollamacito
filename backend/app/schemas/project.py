@@ -62,7 +62,7 @@ class ProjectFileCreate(BaseModel):
     """Schema for creating a new project file."""
 
     filename: str = Field(..., min_length=1, max_length=255)
-    file_type: str = Field(..., pattern="^(txt|json|csv)$")
+    file_type: str = Field(..., pattern="^(txt|json|csv|md)$")
     content: str = Field(..., min_length=1)
 
 

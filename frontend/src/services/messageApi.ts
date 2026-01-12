@@ -15,17 +15,12 @@ export const messageApi = {
   },
 
   // Streaming endpoint URL generator
-  getStreamUrl: (chatId: string, message: string, fileIds: string[] = []): string => {
+  getStreamUrl: (chatId: string, message: string): string => {
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
     const encodedMessage = encodeURIComponent(message)
-    let url = `${baseUrl}/api/v1/chats/${chatId}/stream?message=${encodedMessage}`
+    const url = `${baseUrl}/api/v1/chats/${chatId}/stream?message=${encodedMessage}`
 
-    // Add file_ids as query parameters
-    if (fileIds.length > 0) {
-      const fileIdsParam = fileIds.map(id => `file_ids=${id}`).join('&')
-      url += `&${fileIdsParam}`
-    }
-
+    console.log('[MessageAPI] Stream URL:', url)
     return url
   },
 }

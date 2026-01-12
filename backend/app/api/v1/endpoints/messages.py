@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_chat_or_404, get_db
 from app.core.logging import get_logger
@@ -104,16 +105,16 @@ async def create_message(
 async def stream_chat_response(
     chat_id: UUID,
     message: str = Query(..., min_length=1, max_length=32000, description="User message"),
-    file_ids: List[UUID] = Query(default=[], description="List of project file IDs to attach"),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Send a message and stream the Ollama response in real-time.
 
+    For project chats, all project files are automatically included as context.
+
     Args:
         chat_id: Chat UUID
         message: User message content
-        file_ids: List of project file IDs to attach
         db: Database session
 
     Returns:
@@ -122,10 +123,14 @@ async def stream_chat_response(
     Raises:
         HTTPException: If chat not found or Ollama error
     """
+    import uuid as uuid_lib
+    request_id = str(uuid_lib.uuid4())[:8]  # Short request ID for tracking
+    logger.info(f"[Req {request_id}] Stream endpoint called for chat {chat_id}, message: '{message[:50]}...'")
 
     async def event_generator():
         session: AsyncSession = None
         try:
+            logger.info(f"[Req {request_id}] Starting event generator")
             # Create new session for streaming
             from app.db.session import AsyncSessionLocal
 
@@ -146,7 +151,7 @@ async def stream_chat_response(
             result = await session.execute(settings_query)
             global_settings = result.scalar_one_or_none()
 
-            # Get chat settings
+            # Get chat settings for temperature and max_tokens
             chat_settings_query = select(ChatSettings).where(
                 ChatSettings.chat_id == chat_id
             )
@@ -205,32 +210,86 @@ async def stream_chat_response(
                 system_prompt_parts.append(project.custom_instructions)
                 system_prompt_parts.append("")  # Empty line for spacing
 
-            # Add chat-specific system prompt if exists
-            if chat_settings and chat_settings.system_prompt:
-                system_prompt_parts.append(chat_settings.system_prompt)
+            # Automatically load ALL project files for project chats and add to system prompt
+            if chat.project_id:
+                logger.info(f"[Req {request_id}] Chat {chat_id} belongs to project {chat.project_id}, loading project files")
+                # Load all files from the project with explicit content loading
+                files_query = select(ProjectFile).where(
+                    ProjectFile.project_id == chat.project_id
+                ).order_by(ProjectFile.created_at.asc())
+
+                # Execute query and materialize results immediately
+                result = await session.execute(files_query)
+                files = list(result.scalars().all())
+
+                logger.info(f"Loaded {len(files)} files from database for project {chat.project_id}")
+
+                if files:
+                    logger.info(f"Auto-attaching {len(files)} project file(s) to chat {chat_id}")
+
+                    # Add all file contents to the system prompt
+                    # Access all file attributes now while session is active
+                    file_context_parts = []
+                    total_file_chars = 0
+                    for file in files:
+                        # Access all attributes immediately to avoid lazy loading issues
+                        filename = str(file.filename)
+                        file_type = str(file.file_type)
+                        file_content = str(file.content) if file.content is not None else ""
+                        total_file_chars += len(file_content)
+                        logger.info(
+                            f"Including file {filename} ({file_type}, {len(file_content)} chars) "
+                            f"as context for chat {chat_id}"
+                        )
+                        file_context_parts.append(f"[File: {filename}]\n{file_content}\n[End of File]")
+
+                    # Add file context to system prompt
+                    system_prompt_parts.append("Project Files:")
+                    system_prompt_parts.append("\n\n".join(file_context_parts))
+                    system_prompt_parts.append("")  # Empty line for spacing
+
+                    logger.info(
+                        f"Total context size: {total_file_chars} chars from {len(files)} files added to system prompt"
+                    )
+                else:
+                    logger.info(f"No files found in project {chat.project_id} for chat {chat_id}")
 
             # Insert combined system prompt if we have any content
             if system_prompt_parts:
                 combined_prompt = "\n".join(system_prompt_parts)
                 ollama_messages.insert(0, {"role": "system", "content": combined_prompt})
 
-            # Build message content with file attachments
-            message_content = message
-            attached_files = []
+                # Log the complete system prompt
+                logger.info("=" * 80)
+                logger.info("SYSTEM PROMPT:")
+                logger.info("=" * 80)
+                logger.info(combined_prompt)
+                logger.info("=" * 80)
 
-            # Load and append file contents if file_ids provided
-            if file_ids:
-                files_query = select(ProjectFile).where(ProjectFile.id.in_(file_ids))
-                result = await session.execute(files_query)
-                files = result.scalars().all()
+            # Add new user message (original message without file contents)
+            ollama_messages.append({"role": "user", "content": message})
 
-                for file in files:
-                    attached_files.append(file)
-                    # Append file content to message
-                    message_content += f"\n\n[File: {file.filename}]\n{file.content}\n[End of File]"
+            # Log the full message content being sent to Ollama for debugging
+            logger.info(
+                f"Sending to Ollama - Chat {chat_id}, User message length: {len(message)} chars, "
+                f"Number of messages in history: {len(ollama_messages)}"
+            )
 
-            # Add new user message with file contents
-            ollama_messages.append({"role": "user", "content": message_content})
+            # Debug: Log all messages being sent to Ollama
+            logger.info("=" * 80)
+            logger.info("MESSAGES BEING SENT TO OLLAMA:")
+            logger.info("=" * 80)
+            for idx, msg in enumerate(ollama_messages):
+                logger.info(f"Message {idx + 1} - Role: {msg['role']}")
+                content = msg['content']
+                if len(content) > 1000:
+                    logger.info(f"Content (first 500 chars): {content[:500]}")
+                    logger.info(f"... [{len(content) - 1000} chars omitted] ...")
+                    logger.info(f"Content (last 500 chars): {content[-500:]}")
+                else:
+                    logger.info(f"Content: {content}")
+                logger.info("-" * 80)
+            logger.info("=" * 80)
 
             # Save user message to database
             user_message = Message(
@@ -241,11 +300,10 @@ async def stream_chat_response(
             session.add(user_message)
             await session.flush()
 
-            # Associate files with the message
-            if attached_files:
-                for file in attached_files:
-                    user_message.attached_files.append(file)
-                await session.flush()
+            # Note: We don't need to associate files with the message in the database
+            # since all project files are automatically included as context.
+            # The message_files relationship is kept for potential future use
+            # (e.g., selective file attachment or file change tracking).
 
             logger.info(f"Starting stream for chat {chat_id}")
 

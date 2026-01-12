@@ -20,8 +20,8 @@ export const FileUpload = ({ projectId, onUploadSuccess }: FileUploadProps) => {
 
     // Validate file type
     const fileExtension = file.name.split('.').pop()?.toLowerCase()
-    if (!fileExtension || !['txt', 'json', 'csv'].includes(fileExtension)) {
-      showToast('Only .txt, .json, and .csv files are supported', 'error')
+    if (!fileExtension || !['txt', 'json', 'csv', 'md'].includes(fileExtension)) {
+      showToast('Only .txt, .json, .csv, and .md files are supported', 'error')
       return
     }
 
@@ -41,7 +41,7 @@ export const FileUpload = ({ projectId, onUploadSuccess }: FileUploadProps) => {
       // Prepare file data
       const fileData: ProjectFileCreate = {
         filename: file.name,
-        file_type: fileExtension as 'txt' | 'json' | 'csv',
+        file_type: fileExtension as 'txt' | 'json' | 'csv' | 'md',
         content,
       }
 
@@ -89,7 +89,7 @@ export const FileUpload = ({ projectId, onUploadSuccess }: FileUploadProps) => {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.json,.csv"
+        accept=".txt,.json,.csv,.md"
         onChange={handleFileSelect}
         className="file-upload__input"
         disabled={uploading}
@@ -102,7 +102,7 @@ export const FileUpload = ({ projectId, onUploadSuccess }: FileUploadProps) => {
       >
         {uploading ? 'Uploading...' : '+ Upload File'}
       </Button>
-      <span className="file-upload__hint">Supports .txt, .json, .csv (max 5MB)</span>
+      <span className="file-upload__hint">Supports .txt, .json, .csv, .md (max 5MB)</span>
     </div>
   )
 }

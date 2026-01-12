@@ -28,7 +28,7 @@ export interface ProjectFile {
 
 export interface ProjectFileCreate {
   filename: string
-  file_type: 'txt' | 'json' | 'csv'
+  file_type: 'txt' | 'json' | 'csv' | 'md'
   content: string
 }
 

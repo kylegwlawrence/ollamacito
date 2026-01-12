@@ -23,6 +23,7 @@ export const Sidebar = () => {
   const { showToast } = useToast()
   const [selectedModel, setSelectedModel] = useState<string>(settings.default_model)
   const [projectsExpanded, setProjectsExpanded] = useState(true)
+  const [chatsExpanded, setChatsExpanded] = useState(true)
 
   useEffect(() => {
     loadChats()
@@ -118,6 +119,15 @@ export const Sidebar = () => {
         <h1 className="sidebar__title">Ollama::cito</h1>
         <img src="/green_logo_filled.png" alt="Logo" className="sidebar__logo"/>
         <Button
+          onClick={handleCreateProject}
+          variant="primary"
+          size="sm"
+          title="Create a new project"
+          aria-label="Create a new project"
+        >
+          + Create Project
+        </Button>
+        <Button
           onClick={handleNewChat}
           variant="primary"
           size="sm"
@@ -159,14 +169,6 @@ export const Sidebar = () => {
 
         {projectsExpanded && (
           <div id="projects-list" className="sidebar__projects" role="list">
-            <button
-              className="sidebar__new-button"
-              onClick={handleCreateProject}
-              aria-label="Create a new project"
-            >
-              + Create Project
-            </button>
-
             {projectsLoading ? (
               <div className="sidebar__loading">
                 <LoadingSpinner />
@@ -192,35 +194,42 @@ export const Sidebar = () => {
 
       {/* Chats Section - Only standalone chats */}
       <section className="sidebar__section" aria-labelledby="chats-heading">
-        <div className="sidebar__section-header">
-          <span id="chats-heading">Chats</span>
-        </div>
+        <button
+          className="sidebar__section-header"
+          onClick={() => setChatsExpanded(!chatsExpanded)}
+          aria-expanded={chatsExpanded}
+          aria-controls="chats-list"
+        >
+          <span id="chats-heading">{chatsExpanded ? '▼' : '▶'} Chats</span>
+        </button>
 
-        <div className="sidebar__chats">
-          {loading && (
-            <div className="sidebar__loading">
-              <LoadingSpinner />
-            </div>
-          )}
+        {chatsExpanded && (
+          <div id="chats-list" className="sidebar__chats" role="list">
+            {loading && (
+              <div className="sidebar__loading">
+                <LoadingSpinner />
+              </div>
+            )}
 
-          {!loading && standaloneChats.length === 0 && (
-            <div className="sidebar__empty">
-              <p>No standalone chats yet.</p>
-            </div>
-          )}
+            {!loading && standaloneChats.length === 0 && (
+              <div className="sidebar__empty">
+                <p>No standalone chats yet.</p>
+              </div>
+            )}
 
-          {standaloneChats.map((chat) => (
-            <ChatItem
-              key={chat.id}
-              chat={chat}
-              isActive={currentChat?.id === chat.id}
-              onSelect={handleSelectChat}
-              onRename={handleRename}
-              onChangeModel={handleChangeModel}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
+            {standaloneChats.map((chat) => (
+              <ChatItem
+                key={chat.id}
+                chat={chat}
+                isActive={currentChat?.id === chat.id}
+                onSelect={handleSelectChat}
+                onRename={handleRename}
+                onChangeModel={handleChangeModel}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+        )}
       </section>
     </nav>
   )

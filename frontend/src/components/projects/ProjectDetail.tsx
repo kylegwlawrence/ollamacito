@@ -335,13 +335,17 @@ export const ProjectDetail = () => {
                   </label>
                   <input
                     id="max-tokens-edit"
-                    type="number"
+                    type="text"
                     className="project-detail__input"
                     value={editedMaxTokens}
-                    onChange={(e) => setEditedMaxTokens(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      // Allow empty string or positive integers only
+                      if (value === '' || /^[1-9]\d*$/.test(value)) {
+                        setEditedMaxTokens(value)
+                      }
+                    }}
                     placeholder={`Global default: ${settings.default_max_tokens}`}
-                    min="1"
-                    step="1"
                   />
                   <span className="project-detail__hint">
                     Maximum context window size

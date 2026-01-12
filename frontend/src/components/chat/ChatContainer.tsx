@@ -37,8 +37,15 @@ export const ChatContainer = () => {
     }
   }, [currentChat?.id])
 
-  const handleSend = (message: string, fileIds?: string[]) => {
+  const handleSend = (message: string) => {
     if (!currentChat) return
+
+    console.log('[ChatContainer] Sending message:', {
+      chatId: currentChat.id,
+      projectId: currentChat.project_id,
+      hasProjectFiles: projectFiles && projectFiles.length > 0,
+      fileCount: projectFiles?.length || 0,
+    })
 
     // Add user message to the message list immediately
     const userMessage = {
@@ -50,8 +57,8 @@ export const ChatContainer = () => {
     }
     setMessages([...messages, userMessage])
 
-    // Send to AI with file IDs
-    streaming.sendMessage(currentChat.id, message, fileIds)
+    // Send to AI (files are automatically included on backend for project chats)
+    streaming.sendMessage(currentChat.id, message)
   }
 
   // Get project files if chat belongs to a project

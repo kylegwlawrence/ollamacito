@@ -5,6 +5,7 @@
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .sidebar__header {
@@ -123,7 +124,10 @@
 
 /* Section Styles */
 .sidebar__section {
-  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex-shrink: 0;
 }
 
 .sidebar__section-header {
@@ -150,6 +154,31 @@
   flex-direction: column;
   gap: 0.25rem;
   padding: 0 0.5rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 400px;
+}
+
+/* Scrollbar styling for sidebar lists */
+.sidebar__projects::-webkit-scrollbar,
+.sidebar__chats::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar__projects::-webkit-scrollbar-track,
+.sidebar__chats::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+.sidebar__projects::-webkit-scrollbar-thumb,
+.sidebar__chats::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.sidebar__projects::-webkit-scrollbar-thumb:hover,
+.sidebar__chats::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
 }
 
 .sidebar__new-button {
