@@ -4,6 +4,7 @@ import { useProject } from '@/contexts/ProjectContext'
 import { useChat } from '@/contexts/ChatContext'
 import { useChats } from '@/hooks/useChats'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useModels } from '@/hooks/useModels'
 import { useToast } from '@/contexts/ToastContext'
 import { projectApi } from '@/services/projectApi'
 import { Button } from '../common/Button'
@@ -20,16 +21,22 @@ export const ProjectDetail = () => {
   const { setCurrentChat } = useChat()
   const { createChat, updateChat, deleteChat } = useChats()
   const { settings } = useSettings()
+  const { models } = useModels()
   const { showToast } = useToast()
   const [projectChats, setProjectChats] = useState<Chat[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedModel, setSelectedModel] = useState<string>(settings.default_model)
 
   useEffect(() => {
     if (currentProjectId) {
       loadProjectData()
     }
   }, [currentProjectId])
+
+  useEffect(() => {
+    setSelectedModel(settings.default_model)
+  }, [settings.default_model])
 
   const loadProjectData = async () => {
     if (!currentProjectId) return
@@ -59,7 +66,7 @@ export const ProjectDetail = () => {
     try {
       const newChat = await createChat({
         title: 'New Chat',
-        model: settings.default_model,
+        model: selectedModel,
         project_id: currentProjectId,
       })
 
@@ -163,9 +170,29 @@ export const ProjectDetail = () => {
       <div className="project-detail__section">
         <div className="project-detail__section-header">
           <h2>Chats</h2>
-          <Button onClick={handleNewChat} variant="primary" size="sm">
-            + New Chat
-          </Button>
+          <div className="project-detail__chat-actions">
+            <div className="project-detail__model-selector">
+              <label htmlFor="project-model-select" className="project-detail__model-label">
+                Model:
+              </label>
+              <select
+                id="project-model-select"
+                className="project-detail__model-select"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                title="Select a model for new chats"
+              >
+                {models.map((model) => (
+                  <option key={model.name} value={model.name}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button onClick={handleNewChat} variant="primary" size="sm">
+              + New Chat
+            </Button>
+          </div>
         </div>
 
         <div className="project-detail__chats">
