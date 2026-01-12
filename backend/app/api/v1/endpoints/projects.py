@@ -12,6 +12,8 @@ from app.db.models import Chat, Project, ProjectFile
 from app.schemas.chat import ChatListResponse, ChatResponse
 from app.schemas.project import (
     ProjectCreate,
+    ProjectFileCreate,
+    ProjectFileResponse,
     ProjectListResponse,
     ProjectResponse,
     ProjectUpdate,
@@ -312,4 +314,157 @@ async def get_project_chats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving project chats",
+        )
+
+
+@router.post("/{project_id}/files", response_model=ProjectFileResponse, status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    file_data: ProjectFileCreate,
+    project: Project = Depends(get_project_or_404),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload a file to a project.
+
+    Args:
+        file_data: File upload data
+        project: Project from dependency
+        db: Database session
+
+    Returns:
+        ProjectFileResponse: Created file
+    """
+    try:
+        # Generate content preview (first 200 chars)
+        content_preview = file_data.content[:200] if len(file_data.content) > 200 else file_data.content
+
+        # Create file record
+        new_file = ProjectFile(
+            project_id=project.id,
+            filename=file_data.filename,
+            file_path=f"project_{project.id}/{file_data.filename}",  # Virtual path
+            file_type=file_data.file_type,
+            file_size=len(file_data.content),
+            content_preview=content_preview,
+            content=file_data.content,
+        )
+        db.add(new_file)
+        await db.flush()
+        await db.refresh(new_file)
+
+        logger.info(f"Uploaded file {new_file.id} to project {project.id}")
+
+        return ProjectFileResponse(
+            id=new_file.id,
+            project_id=new_file.project_id,
+            filename=new_file.filename,
+            file_type=new_file.file_type,
+            file_size=new_file.file_size,
+            content_preview=new_file.content_preview,
+            content=new_file.content,
+            created_at=new_file.created_at,
+        )
+
+    except Exception as e:
+        logger.error(f"Error uploading file: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error uploading file",
+        )
+
+
+@router.get("/{project_id}/files/{file_id}", response_model=ProjectFileResponse)
+async def get_file(
+    file_id: str,
+    project: Project = Depends(get_project_or_404),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get a specific file from a project.
+
+    Args:
+        file_id: File UUID
+        project: Project from dependency
+        db: Database session
+
+    Returns:
+        ProjectFileResponse: File details with content
+    """
+    try:
+        # Query for the file
+        query = select(ProjectFile).where(
+            ProjectFile.id == file_id,
+            ProjectFile.project_id == project.id,
+        )
+        result = await db.execute(query)
+        file = result.scalar_one_or_none()
+
+        if not file:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found",
+            )
+
+        return ProjectFileResponse(
+            id=file.id,
+            project_id=file.project_id,
+            filename=file.filename,
+            file_type=file.file_type,
+            file_size=file.file_size,
+            content_preview=file.content_preview,
+            content=file.content,
+            created_at=file.created_at,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving file: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving file",
+        )
+
+
+@router.delete("/{project_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_file(
+    file_id: str,
+    project: Project = Depends(get_project_or_404),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete a file from a project.
+
+    Args:
+        file_id: File UUID
+        project: Project from dependency
+        db: Database session
+    """
+    try:
+        # Query for the file
+        query = select(ProjectFile).where(
+            ProjectFile.id == file_id,
+            ProjectFile.project_id == project.id,
+        )
+        result = await db.execute(query)
+        file = result.scalar_one_or_none()
+
+        if not file:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found",
+            )
+
+        await db.delete(file)
+        await db.flush()
+
+        logger.info(f"Deleted file {file_id} from project {project.id}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting file: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting file",
         )

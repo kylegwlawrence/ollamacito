@@ -8,6 +8,15 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+class AttachedFileInfo(BaseModel):
+    """Simplified file info for message attachments."""
+
+    id: UUID
+    filename: str
+    file_type: str
+    file_size: int
+
+
 class MessageBase(BaseModel):
     """Base message schema with common attributes."""
 
@@ -19,6 +28,7 @@ class MessageCreate(BaseModel):
     """Schema for creating a new message (sending user message)."""
 
     content: str = Field(..., min_length=1)
+    file_ids: List[UUID] = Field(default_factory=list, description="List of project file IDs to attach")
 
 
 class MessageResponse(MessageBase):
@@ -27,6 +37,7 @@ class MessageResponse(MessageBase):
     id: UUID
     chat_id: UUID
     tokens_used: Optional[int] = None
+    attached_files: List[AttachedFileInfo] = Field(default_factory=list)
     created_at: datetime
 
     model_config = {"from_attributes": True}

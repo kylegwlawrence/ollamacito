@@ -63,6 +63,7 @@ class ProjectFile(Base, TimestampMixin):
     file_type: Mapped[str] = mapped_column(String(20), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     content_preview: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="files")

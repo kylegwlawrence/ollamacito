@@ -40,9 +40,18 @@ class ProjectFileResponse(BaseModel):
     file_type: str
     file_size: int
     content_preview: Optional[str]
+    content: Optional[str]
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ProjectFileCreate(BaseModel):
+    """Schema for creating a new project file."""
+
+    filename: str = Field(..., min_length=1, max_length=255)
+    file_type: str = Field(..., pattern="^(txt|json|csv)$")
+    content: str = Field(..., min_length=1)
 
 
 class ProjectResponse(ProjectBase):

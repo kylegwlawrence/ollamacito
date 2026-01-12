@@ -2,12 +2,14 @@ import { useEffect } from 'react'
 import { MessageList } from './MessageList'
 import { MessageInput } from './MessageInput'
 import { useChat } from '@/contexts/ChatContext'
+import { useProject } from '@/contexts/ProjectContext'
 import { useStreaming } from '@/hooks/useStreaming'
 import { chatApi } from '@/services/chatApi'
 import './ChatContainer.css'
 
 export const ChatContainer = () => {
   const { currentChat, messages, setMessages } = useChat()
+  const { currentProject } = useProject()
   const streaming = useStreaming(() => {
     // Reload messages after streaming completes
     if (currentChat) {
@@ -33,7 +35,7 @@ export const ChatContainer = () => {
     }
   }, [currentChat?.id])
 
-  const handleSend = (message: string) => {
+  const handleSend = (message: string, fileIds?: string[]) => {
     if (!currentChat) return
 
     // Add user message to the message list immediately
@@ -46,9 +48,14 @@ export const ChatContainer = () => {
     }
     setMessages([...messages, userMessage])
 
-    // Send to AI
-    streaming.sendMessage(currentChat.id, message)
+    // Send to AI with file IDs
+    streaming.sendMessage(currentChat.id, message, fileIds)
   }
+
+  // Get project files if chat belongs to a project
+  const projectFiles = currentChat?.project_id && currentProject?.id === currentChat.project_id
+    ? currentProject.files || []
+    : undefined
 
   if (!currentChat) {
     return (
@@ -79,6 +86,7 @@ export const ChatContainer = () => {
         disabled={streaming.isStreaming}
         isStreaming={streaming.isStreaming}
         onStop={streaming.cancelStream}
+        projectFiles={projectFiles}
       />
     </main>
   )

@@ -9,6 +9,8 @@ import { projectApi } from '@/services/projectApi'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ChatItem } from '../sidebar/ChatItem'
+import { FileUpload } from '../files/FileUpload'
+import { FileList } from '../files/FileList'
 import type { Chat } from '@/types'
 import './ProjectDetail.css'
 
@@ -188,15 +190,17 @@ export const ProjectDetail = () => {
         </div>
       </div>
 
-      {/* Files Section - Placeholder for Phase 2 */}
+      {/* Files Section */}
       <div className="project-detail__section">
         <div className="project-detail__section-header">
           <h2>Files</h2>
-          <span className="project-detail__badge">{currentProject.file_count}</span>
+          <FileUpload projectId={currentProjectId!} onUploadSuccess={loadProjectData} />
         </div>
-        <div className="project-detail__placeholder">
-          <p>File upload coming soon (Phase 2)</p>
-        </div>
+        <FileList
+          projectId={currentProjectId!}
+          files={currentProject.files || []}
+          onFileDeleted={loadProjectData}
+        />
       </div>
 
       {/* Memory Section - Placeholder for future */}

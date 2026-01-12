@@ -2,6 +2,7 @@
 API endpoints for message management and streaming.
 """
 import json
+from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_chat_or_404, get_db
 from app.core.logging import get_logger
-from app.db.models import Chat, ChatSettings, Message, Project, Settings
+from app.db.models import Chat, ChatSettings, Message, Project, ProjectFile, Settings
 from app.schemas.message import MessageCreate, MessageListResponse, MessageResponse
 from app.services.ollama_service import ollama_service
 from app.utils.exceptions import OllamaConnectionError
@@ -103,6 +104,7 @@ async def create_message(
 async def stream_chat_response(
     chat_id: UUID,
     message: str = Query(..., min_length=1, max_length=32000, description="User message"),
+    file_ids: List[UUID] = Query(default=[], description="List of project file IDs to attach"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -111,6 +113,7 @@ async def stream_chat_response(
     Args:
         chat_id: Chat UUID
         message: User message content
+        file_ids: List of project file IDs to attach
         db: Database session
 
     Returns:
@@ -198,17 +201,38 @@ async def stream_chat_response(
                 combined_prompt = "\n".join(system_prompt_parts)
                 ollama_messages.insert(0, {"role": "system", "content": combined_prompt})
 
-            # Add new user message
-            ollama_messages.append({"role": "user", "content": message})
+            # Build message content with file attachments
+            message_content = message
+            attached_files = []
+
+            # Load and append file contents if file_ids provided
+            if file_ids:
+                files_query = select(ProjectFile).where(ProjectFile.id.in_(file_ids))
+                result = await session.execute(files_query)
+                files = result.scalars().all()
+
+                for file in files:
+                    attached_files.append(file)
+                    # Append file content to message
+                    message_content += f"\n\n[File: {file.filename}]\n{file.content}\n[End of File]"
+
+            # Add new user message with file contents
+            ollama_messages.append({"role": "user", "content": message_content})
 
             # Save user message to database
             user_message = Message(
                 chat_id=chat_id,
                 role="user",
-                content=message,
+                content=message,  # Store original message without file contents
             )
             session.add(user_message)
             await session.flush()
+
+            # Associate files with the message
+            if attached_files:
+                for file in attached_files:
+                    user_message.attached_files.append(file)
+                await session.flush()
 
             logger.info(f"Starting stream for chat {chat_id}")
 

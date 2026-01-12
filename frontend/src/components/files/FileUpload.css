@@ -1,0 +1,14 @@
+.file-upload {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.file-upload__input {
+  display: none;
+}
+
+.file-upload__hint {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}

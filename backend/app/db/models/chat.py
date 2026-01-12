@@ -4,11 +4,20 @@ Database models for chats and messages.
 import uuid
 from typing import List, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+
+
+# Junction table for many-to-many relationship between messages and files
+message_files = Table(
+    "message_files",
+    Base.metadata,
+    Column("message_id", UUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True, nullable=False),
+    Column("file_id", UUID(as_uuid=True), ForeignKey("project_files.id", ondelete="CASCADE"), primary_key=True, nullable=False),
+)
 
 
 class Chat(Base, TimestampMixin):
@@ -73,6 +82,11 @@ class Message(Base, TimestampMixin):
 
     # Relationships
     chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")
+    attached_files: Mapped[List["ProjectFile"]] = relationship(
+        "ProjectFile",
+        secondary=message_files,
+        lazy="selectin",
+    )
 
     def __repr__(self) -> str:
         return f"<Message(id={self.id}, role={self.role}, chat_id={self.chat_id})>"

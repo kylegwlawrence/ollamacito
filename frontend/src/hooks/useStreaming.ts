@@ -3,7 +3,7 @@ import { messageApi } from '@/services/messageApi'
 import type { StreamChunk, StreamError } from '@/types'
 
 interface UseStreamingReturn {
-  sendMessage: (chatId: string, message: string) => Promise<void>
+  sendMessage: (chatId: string, message: string, fileIds?: string[]) => Promise<void>
   isStreaming: boolean
   streamingContent: string
   error: string | null
@@ -27,13 +27,13 @@ export const useStreaming = (
   }, [])
 
   const sendMessage = useCallback(
-    async (chatId: string, message: string) => {
+    async (chatId: string, message: string, fileIds: string[] = []) => {
       try {
         setIsStreaming(true)
         setStreamingContent('')
         setError(null)
 
-        const streamUrl = messageApi.getStreamUrl(chatId, message)
+        const streamUrl = messageApi.getStreamUrl(chatId, message, fileIds)
         const eventSource = new EventSource(streamUrl)
         eventSourceRef.current = eventSource
 

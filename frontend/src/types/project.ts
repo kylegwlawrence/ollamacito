@@ -19,8 +19,14 @@ export interface ProjectFile {
   file_type: string
   file_size: number
   content_preview: string | null
+  content?: string | null
   created_at: string
-  updated_at: string
+}
+
+export interface ProjectFileCreate {
+  filename: string
+  file_type: 'txt' | 'json' | 'csv'
+  content: string
 }
 
 export interface ProjectResponse extends Project {

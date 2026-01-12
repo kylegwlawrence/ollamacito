@@ -6,6 +6,8 @@ import type {
   ProjectResponse,
   ProjectUpdate,
   ChatListResponse,
+  ProjectFile,
+  ProjectFileCreate,
 } from '@/types'
 
 export const projectApi = {
@@ -51,5 +53,23 @@ export const projectApi = {
       params: { page, page_size: pageSize },
     })
     return data
+  },
+
+  // File management endpoints
+  uploadFile: async (
+    projectId: string,
+    fileData: ProjectFileCreate
+  ): Promise<ProjectFile> => {
+    const { data } = await api.post(`/projects/${projectId}/files`, fileData)
+    return data
+  },
+
+  getFile: async (projectId: string, fileId: string): Promise<ProjectFile> => {
+    const { data } = await api.get(`/projects/${projectId}/files/${fileId}`)
+    return data
+  },
+
+  deleteFile: async (projectId: string, fileId: string): Promise<void> => {
+    await api.delete(`/projects/${projectId}/files/${fileId}`)
   },
 }

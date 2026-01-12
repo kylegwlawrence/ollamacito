@@ -3,8 +3,9 @@
   border-top: 1px solid var(--border-color);
   background-color: var(--bg-secondary);
   display: flex;
+  flex-direction: column;
   gap: 0.75rem;
-  align-items: flex-end;
+  position: relative;
 }
 
 .message-input__textarea {
@@ -43,4 +44,129 @@
   background-color: #dc2626;
   border-color: #dc2626;
   opacity: 0.9;
+}
+
+.message-input__controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  width: 100%;
+}
+
+.message-input__buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* Selected Files Chips */
+.message-input__selected-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.message-input__file-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 16px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.message-input__file-chip:hover {
+  opacity: 0.8;
+}
+
+.message-input__file-chip-remove {
+  font-size: 1.25rem;
+  font-weight: bold;
+  line-height: 1;
+}
+
+/* File Picker Dropdown */
+.message-input__file-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 1rem;
+  right: 1rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 300px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+.message-input__file-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  font-weight: 500;
+}
+
+.message-input__file-picker-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0;
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-input__file-picker-close:hover {
+  color: var(--text-primary);
+}
+
+.message-input__file-list {
+  overflow-y: auto;
+  max-height: 240px;
+}
+
+.message-input__file-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.message-input__file-option:hover {
+  background: var(--bg-secondary);
+}
+
+.message-input__file-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.message-input__file-name {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--text-primary);
 }
