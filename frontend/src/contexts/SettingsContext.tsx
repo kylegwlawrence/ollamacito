@@ -4,9 +4,10 @@ import { getErrorMessage } from '@/utils/errorHandler'
 import type { Settings } from '@/types'
 
 // Default settings to use if loading fails or is still in progress
+// Note: This should match backend config.py default_model
 const DEFAULT_SETTINGS: Settings = {
   id: 1,
-  default_model: 'qwen2.5-coder:7b',
+  default_model: 'mistral:7b',
   default_temperature: 0.7,
   default_max_tokens: 2048,
   theme: 'dark',

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_chat_or_404, get_db
+from app.core.config import settings as app_settings
 from app.core.logging import get_logger
 from app.db.models import Chat, ChatSettings, Settings
 from app.schemas.settings import (
@@ -41,12 +42,18 @@ async def get_global_settings(
         settings = result.scalar_one_or_none()
 
         if not settings:
-            # Create default settings if not exists
-            settings = Settings(id=1)
+            # Create default settings if not exists, using config.py as source of truth
+            settings = Settings(
+                id=1,
+                default_model=app_settings.default_model,
+                default_temperature=0.7,
+                default_max_tokens=2048,
+                theme="dark",
+            )
             db.add(settings)
             await db.flush()
             await db.refresh(settings)
-            logger.info("Created default settings")
+            logger.info(f"Created default settings with model: {app_settings.default_model}")
 
         return SettingsResponse.model_validate(settings)
 
@@ -79,7 +86,13 @@ async def update_global_settings(
         settings = result.scalar_one_or_none()
 
         if not settings:
-            settings = Settings(id=1)
+            settings = Settings(
+                id=1,
+                default_model=app_settings.default_model,
+                default_temperature=0.7,
+                default_max_tokens=2048,
+                theme="dark",
+            )
             db.add(settings)
 
         # Update fields

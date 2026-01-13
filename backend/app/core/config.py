@@ -40,8 +40,22 @@ class Settings(BaseSettings):
         description="Base URL for Ollama API",
     )
     default_model: str = Field(
-        default="qwen2.5-coder:7b",
+        default="mistral:7b",
         description="Default Ollama model to use",
+    )
+
+    # Title Generation Settings
+    title_generation_model: str = Field(
+        default="SummLlama3.2:3B-Q5_K_M",
+        description="Model to use for chat title generation",
+    )
+    title_generation_prompt_file: str = Field(
+        default="app/prompts/chat_title_generation.md",
+        description="Path to prompt file for title generation (relative to backend directory)",
+    )
+    enable_auto_title: bool = Field(
+        default=True,
+        description="Enable automatic chat title generation",
     )
 
     # CORS Settings

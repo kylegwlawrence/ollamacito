@@ -8,6 +8,7 @@ from sqlalchemy import CheckConstraint, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import settings as app_settings
 from app.db.base import Base, TimestampMixin
 
 
@@ -19,7 +20,7 @@ class Settings(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     default_model: Mapped[str] = mapped_column(
         String(100),
-        default="qwen2.5-coder:7b",
+        default=lambda: app_settings.default_model,
         nullable=False,
     )
     default_temperature: Mapped[float] = mapped_column(

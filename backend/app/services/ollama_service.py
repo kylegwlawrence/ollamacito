@@ -2,6 +2,7 @@
 Service for interacting with Ollama API.
 """
 import json
+from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -196,6 +197,109 @@ class OllamaService:
                 logger.error(f"Model '{model}' not found")
                 raise OllamaModelNotFoundError(model)
             logger.error(f"Error in streaming chat: {e}")
+            raise OllamaConnectionError(self.base_url, str(e))
+
+    def _load_title_prompt(self) -> str:
+        """
+        Load title generation prompt from file.
+
+        Returns:
+            str: Prompt text for title generation
+
+        Raises:
+            None: Errors are caught and logged, returns fallback prompt
+        """
+        try:
+            prompt_file = Path(settings.title_generation_prompt_file)
+            if prompt_file.exists():
+                prompt_text = prompt_file.read_text().strip()
+                logger.debug(f"Loaded title prompt from {prompt_file}")
+                return prompt_text
+            else:
+                logger.warning(f"Prompt file not found: {prompt_file}")
+                return "Summarize the content from this chat in 3 to 5 words."
+        except Exception as e:
+            logger.error(f"Error loading prompt file: {e}")
+            return "Summarize the content from this chat in 3 to 5 words."
+
+    async def generate_chat_title(
+        self,
+        user_messages: List[str],
+        assistant_messages: List[str],
+    ) -> str:
+        """
+        Generate a chat title using SummLlama3.2 model.
+        Dynamically loads prompt from make_chat_title_prompt.md file.
+
+        Args:
+            user_messages: List of user message contents (max 2)
+            assistant_messages: List of assistant message contents (max 2)
+
+        Returns:
+            str: Generated title (3-5 words)
+
+        Raises:
+            OllamaConnectionError: If unable to connect
+            OllamaModelNotFoundError: If model not found
+        """
+        try:
+            # Load prompt from file
+            system_prompt = self._load_title_prompt()
+
+            # Build conversation context for title generation
+            messages = []
+
+            # Add system message with prompt
+            messages.append({"role": "system", "content": system_prompt})
+
+            # Interleave user and assistant messages
+            for i in range(max(len(user_messages), len(assistant_messages))):
+                if i < len(user_messages):
+                    messages.append({"role": "user", "content": user_messages[i]})
+                if i < len(assistant_messages):
+                    messages.append({"role": "assistant", "content": assistant_messages[i]})
+
+            # Ask for title generation
+            messages.append({"role": "user", "content": "Generate a short title for this conversation."})
+
+            logger.info(f"Generating title using model '{settings.title_generation_model}'")
+
+            # Call Ollama with title generation settings
+            options = {
+                "num_predict": 50,
+                "temperature": 0.2,
+            }
+
+            response = await self.client.chat(
+                model=settings.title_generation_model,
+                messages=messages,
+                options=options,
+                stream=False,
+            )
+
+            # Extract title from response
+            title = response.get("message", {}).get("content", "").strip()
+
+            if not title:
+                logger.warning("Empty title generated, using fallback")
+                return "New Chat"
+
+            # Clean up the title (remove quotes, extra whitespace, newlines)
+            title = title.replace('"', '').replace("'", "").replace("\n", " ").strip()
+
+            # Limit title length to 50 characters for safety
+            if len(title) > 50:
+                title = title[:50].strip()
+
+            logger.info(f"Generated title: '{title}'")
+            return title
+
+        except Exception as e:
+            error_str = str(e).lower()
+            if "not found" in error_str or "does not exist" in error_str:
+                logger.error(f"Title generation model '{settings.title_generation_model}' not found")
+                raise OllamaModelNotFoundError(settings.title_generation_model)
+            logger.error(f"Error in title generation: {e}")
             raise OllamaConnectionError(self.base_url, str(e))
 
 

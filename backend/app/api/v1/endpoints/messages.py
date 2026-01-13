@@ -1,6 +1,7 @@
 """
 API endpoints for message management and streaming.
 """
+import asyncio
 import json
 from typing import List
 from uuid import UUID
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_chat_or_404, get_db
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models import Chat, ChatSettings, Message, Project, ProjectFile, Settings
 from app.schemas.message import MessageCreate, MessageListResponse, MessageResponse
@@ -20,6 +22,96 @@ from app.utils.exceptions import OllamaConnectionError
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+
+async def generate_and_update_title(session: AsyncSession, chat_id: UUID) -> None:
+    """
+    Generate title for a chat after 1st assistant response.
+    Uses first user message and first assistant message as context.
+    Implements retry logic: retries once on failure.
+
+    Args:
+        session: Database session
+        chat_id: Chat UUID
+    """
+    if not settings.enable_auto_title:
+        logger.debug(f"Auto-title generation disabled, skipping for chat {chat_id}")
+        return
+
+    try:
+        # First, check if the chat already has a custom title (not "New Chat")
+        chat_query = select(Chat).where(Chat.id == chat_id)
+        result = await session.execute(chat_query)
+        chat = result.scalar_one_or_none()
+
+        if not chat:
+            logger.warning(f"Chat {chat_id} not found")
+            return
+
+        # Skip title generation if chat already has a custom title
+        if chat.title != "New Chat":
+            logger.info(f"Chat {chat_id} already has custom title '{chat.title}', skipping generation")
+            return
+
+        logger.info(f"Starting title generation for chat {chat_id}")
+
+        # Query first user message
+        user_messages_query = (
+            select(Message)
+            .where(Message.chat_id == chat_id, Message.role == "user")
+            .order_by(Message.created_at.asc())
+            .limit(1)
+        )
+        result = await session.execute(user_messages_query)
+        user_messages = result.scalars().all()
+
+        # Query first assistant message
+        assistant_messages_query = (
+            select(Message)
+            .where(Message.chat_id == chat_id, Message.role == "assistant")
+            .order_by(Message.created_at.asc())
+            .limit(1)
+        )
+        result = await session.execute(assistant_messages_query)
+        assistant_messages = result.scalars().all()
+
+        # Extract content into lists
+        user_contents = [msg.content for msg in user_messages]
+        assistant_contents = [msg.content for msg in assistant_messages]
+
+        if not user_contents or not assistant_contents:
+            logger.warning(f"Insufficient messages for title generation in chat {chat_id}")
+            return
+
+        # Try generating title with retry logic
+        title = None
+        max_attempts = 2
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                logger.info(f"Title generation attempt {attempt}/{max_attempts} for chat {chat_id}")
+                title = await ollama_service.generate_chat_title(user_contents, assistant_contents)
+                break  # Success, exit retry loop
+            except Exception as e:
+                logger.error(f"Title generation failed (attempt {attempt}/{max_attempts}): {e}")
+                if attempt < max_attempts:
+                    # Wait 2 seconds before retry
+                    logger.info(f"Retrying title generation in 2 seconds...")
+                    await asyncio.sleep(2)
+                else:
+                    logger.error(f"Title generation failed after {max_attempts} attempts, keeping default title")
+                    return
+
+        # Update chat title in database
+        if title and title != "New Chat":
+            chat.title = title
+            await session.flush()
+            logger.info(f"Updated chat {chat_id} title to: '{title}'")
+        else:
+            logger.warning(f"Invalid title generated for chat {chat_id}, keeping default")
+
+    except Exception as e:
+        logger.error(f"Unexpected error in generate_and_update_title for chat {chat_id}: {e}")
 
 
 @router.get("/{chat_id}/messages", response_model=MessageListResponse)
@@ -329,6 +421,19 @@ async def stream_chat_response(
             await session.commit()
 
             logger.info(f"Completed stream for chat {chat_id}")
+
+            # Check if this is the 1st assistant response and trigger title generation
+            message_count_query = select(func.count()).where(
+                Message.chat_id == chat_id,
+                Message.role == "assistant"
+            )
+            result = await session.execute(message_count_query)
+            assistant_count = result.scalar() or 0
+
+            if assistant_count == 1:
+                logger.info(f"First assistant response completed for chat {chat_id}, triggering title generation")
+                await generate_and_update_title(session, chat_id)
+                await session.commit()  # Commit title update
 
             # Send completion signal
             done_data = json.dumps({"content": "", "done": True})
