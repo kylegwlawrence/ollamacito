@@ -46,7 +46,7 @@ class Settings(BaseSettings):
 
     # Title Generation Settings
     title_generation_model: str = Field(
-        default="SummLlama3.2:3B-Q5_K_M",
+        default="mistral:7b",
         description="Model to use for chat title generation",
     )
     title_generation_prompt_file: str = Field(
