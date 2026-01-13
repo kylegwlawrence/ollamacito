@@ -122,6 +122,18 @@
   padding: 0.5rem;
 }
 
+.sidebar__server-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sidebar__server-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
 /* Section Styles */
 .sidebar__section {
   display: flex;

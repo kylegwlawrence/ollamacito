@@ -2,26 +2,31 @@ import { useEffect, useState } from 'react'
 import { useChat } from '@/contexts/ChatContext'
 import { useChats } from '@/hooks/useChats'
 import { useSettings } from '@/contexts/SettingsContext'
-import { useModels } from '@/hooks/useModels'
 import { useProject } from '@/contexts/ProjectContext'
 import { useView } from '@/contexts/ViewContext'
 import { useToast } from '@/contexts/ToastContext'
+import { useOllamaServers } from '@/hooks/useOllamaServers'
+import { ollamaApi } from '@/services/ollamaApi'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ChatItem } from './ChatItem'
 import { ProjectItem } from './ProjectItem'
-import type { Chat } from '@/types'
+import { ServerSelector } from '../servers/ServerSelector'
+import type { Chat, OllamaModel } from '@/types'
 import './Sidebar.css'
 
 export const Sidebar = () => {
   const { currentChat, setCurrentChat } = useChat()
   const { chats, loading, loadChats, createChat, updateChat, deleteChat } = useChats()
   const { settings } = useSettings()
-  const { models } = useModels()
   const { projects, loading: projectsLoading, createProject, deleteProject } = useProject()
   const { viewType, currentProjectId, navigateToChat, navigateToProject } = useView()
   const { showToast } = useToast()
+  const { servers, getOnlineServers } = useOllamaServers()
   const [selectedModel, setSelectedModel] = useState<string>(settings.default_model)
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(null)
+  const [models, setModels] = useState<OllamaModel[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
   const [projectsExpanded, setProjectsExpanded] = useState(true)
   const [chatsExpanded, setChatsExpanded] = useState(true)
 
@@ -33,10 +38,37 @@ export const Sidebar = () => {
     setSelectedModel(settings.default_model)
   }, [settings.default_model])
 
+  // Fetch models when selected server changes
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        setModelsLoading(true)
+        const response = await ollamaApi.listModels(selectedServerId)
+        setModels(response.models || [])
+        // If current selected model is not in the list, select first model
+        if (response.models && response.models.length > 0) {
+          const modelNames = response.models.map((m) => m.name)
+          if (!modelNames.includes(selectedModel)) {
+            setSelectedModel(response.models[0].name)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch models:', err)
+        showToast('Failed to load models from server', 'error')
+        setModels([])
+      } finally {
+        setModelsLoading(false)
+      }
+    }
+
+    fetchModels()
+  }, [selectedServerId, selectedModel, showToast])
+
   const handleNewChat = async () => {
     const newChat = await createChat({
       title: 'New Chat',
       model: selectedModel,
+      ollama_server_id: selectedServerId,
     })
     if (newChat) {
       setCurrentChat(newChat)
@@ -153,6 +185,16 @@ export const Sidebar = () => {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="sidebar__server-selector">
+          <label className="sidebar__server-label">Server:</label>
+          <ServerSelector
+            servers={servers}
+            selectedServerId={selectedServerId}
+            onServerSelect={setSelectedServerId}
+            showOnlyOnline={true}
+          />
         </div>
       </div>
 

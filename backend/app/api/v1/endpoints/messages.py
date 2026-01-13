@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_chat_or_404, get_db
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.db.models import Chat, ChatSettings, Message, Project, ProjectFile, Settings
+from app.db.models import Chat, ChatSettings, Message, OllamaServer, Project, ProjectFile, Settings
 from app.schemas.message import MessageCreate, MessageListResponse, MessageResponse
 from app.services.ollama_service import ollama_service
 from app.utils.exceptions import OllamaConnectionError
@@ -24,7 +24,7 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
-async def generate_and_update_title(session: AsyncSession, chat_id: UUID) -> None:
+async def generate_and_update_title(session: AsyncSession, chat_id: UUID, base_url: str) -> None:
     """
     Generate title for a chat after 1st assistant response.
     Uses first user message and first assistant message as context.
@@ -33,6 +33,7 @@ async def generate_and_update_title(session: AsyncSession, chat_id: UUID) -> Non
     Args:
         session: Database session
         chat_id: Chat UUID
+        base_url: Ollama server URL to use for title generation
     """
     if not settings.enable_auto_title:
         logger.debug(f"Auto-title generation disabled, skipping for chat {chat_id}")
@@ -90,7 +91,11 @@ async def generate_and_update_title(session: AsyncSession, chat_id: UUID) -> Non
         for attempt in range(1, max_attempts + 1):
             try:
                 logger.info(f"Title generation attempt {attempt}/{max_attempts} for chat {chat_id}")
-                title = await ollama_service.generate_chat_title(user_contents, assistant_contents)
+                title = await ollama_service.generate_chat_title(
+                    base_url=base_url,
+                    user_messages=user_contents,
+                    assistant_messages=assistant_contents,
+                )
                 break  # Success, exit retry loop
             except Exception as e:
                 logger.error(f"Title generation failed (attempt {attempt}/{max_attempts}): {e}")
@@ -229,7 +234,9 @@ async def stream_chat_response(
             session = AsyncSessionLocal()
 
             # Get chat and verify it exists
-            chat_query = select(Chat).where(Chat.id == chat_id)
+            chat_query = select(Chat).where(Chat.id == chat_id).options(
+                selectinload(Chat.ollama_server)
+            )
             result = await session.execute(chat_query)
             chat = result.scalar_one_or_none()
 
@@ -278,6 +285,54 @@ async def stream_chat_response(
                 max_tokens = global_settings.default_max_tokens
             else:
                 max_tokens = 2048
+
+            # Determine which Ollama server to use
+            server_url = None
+            if chat.ollama_server_id and chat.ollama_server:
+                # Chat has a server assigned
+                if chat.ollama_server.status == "online":
+                    server_url = chat.ollama_server.tailscale_url
+                    logger.info(f"[Req {request_id}] Using assigned server '{chat.ollama_server.name}': {server_url}")
+                else:
+                    # Server is offline, find fallback
+                    logger.warning(f"[Req {request_id}] Assigned server '{chat.ollama_server.name}' is offline, finding fallback")
+                    fallback_query = select(OllamaServer).where(
+                        OllamaServer.is_active == True,
+                        OllamaServer.status == "online"
+                    ).limit(1)
+                    result = await session.execute(fallback_query)
+                    fallback = result.scalar_one_or_none()
+
+                    if fallback:
+                        server_url = fallback.tailscale_url
+                        warning_msg = f"Your selected server '{chat.ollama_server.name}' is offline. Using '{fallback.name}' instead."
+                        logger.warning(f"[Req {request_id}] {warning_msg}")
+                        yield f"data: {json.dumps({'warning': warning_msg})}\n\n"
+                    else:
+                        error_msg = "No Ollama servers are currently available. Please try again later."
+                        logger.error(f"[Req {request_id}] {error_msg}")
+                        yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                        await session.close()
+                        return
+            else:
+                # No server assigned to chat, find first online server
+                logger.info(f"[Req {request_id}] No server assigned to chat, finding first online server")
+                fallback_query = select(OllamaServer).where(
+                    OllamaServer.is_active == True,
+                    OllamaServer.status == "online"
+                ).limit(1)
+                result = await session.execute(fallback_query)
+                fallback = result.scalar_one_or_none()
+
+                if fallback:
+                    server_url = fallback.tailscale_url
+                    logger.info(f"[Req {request_id}] Using fallback server '{fallback.name}': {server_url}")
+                else:
+                    error_msg = "No Ollama servers are currently available. Please configure a server first."
+                    logger.error(f"[Req {request_id}] {error_msg}")
+                    yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                    await session.close()
+                    return
 
             # Get chat history
             messages_query = (
@@ -402,6 +457,7 @@ async def stream_chat_response(
             # Stream response from Ollama
             full_response = ""
             async for chunk in ollama_service.stream_chat(
+                base_url=server_url,
                 model=chat.model,
                 messages=ollama_messages,
                 temperature=temperature,
@@ -432,7 +488,7 @@ async def stream_chat_response(
 
             if assistant_count == 1:
                 logger.info(f"First assistant response completed for chat {chat_id}, triggering title generation")
-                await generate_and_update_title(session, chat_id)
+                await generate_and_update_title(session, chat_id, server_url)
                 await session.commit()  # Commit title update
 
             # Send completion signal

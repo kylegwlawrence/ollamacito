@@ -11,7 +11,8 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.db.base import Base
-from app.db.session import engine
+from app.db.session import AsyncSessionLocal, engine
+from app.services.health_monitor import health_monitor
 from app.services.ollama_service import ollama_service
 from app.utils.exceptions import (
     ChatNotFoundException,
@@ -33,7 +34,6 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info(f"Starting {settings.app_name}")
     logger.info(f"Debug mode: {settings.debug}")
-    logger.info(f"Ollama URL: {settings.ollama_base_url}")
 
     # Initialize database tables
     try:
@@ -44,19 +44,43 @@ async def lifespan(app: FastAPI):
         logger.error(f"✗ Failed to initialize database: {e}")
         raise
 
-    # Check Ollama connection
+    # Check for configured Ollama servers
     try:
-        await ollama_service.check_health()
-        models = await ollama_service.get_models()
-        logger.info(f"✓ Connected to Ollama ({len(models)} models available)")
-    except OllamaConnectionError as e:
-        logger.warning(f"⚠ Ollama not available: {e}")
-        logger.warning("Application will start but chat functionality may not work")
+        from sqlalchemy import select
+
+        from app.db.models.ollama_server import OllamaServer
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(OllamaServer).where(OllamaServer.is_active == True)
+            )
+            servers = result.scalars().all()
+            if servers:
+                logger.info(f"✓ Found {len(servers)} configured Ollama server(s)")
+            else:
+                logger.warning("⚠ No Ollama servers configured")
+                logger.warning("Add servers via POST /api/v1/ollama-servers")
+    except Exception as e:
+        logger.warning(f"⚠ Could not check Ollama servers: {e}")
+
+    # Start health monitor
+    try:
+        await health_monitor.start()
+        logger.info("✓ Health monitor started")
+    except Exception as e:
+        logger.error(f"✗ Failed to start health monitor: {e}")
 
     yield
 
     # Shutdown
     logger.info(f"Shutting down {settings.app_name}")
+
+    # Stop health monitor
+    try:
+        await health_monitor.stop()
+        logger.info("✓ Health monitor stopped")
+    except Exception as e:
+        logger.error(f"✗ Error stopping health monitor: {e}")
 
 
 # Create FastAPI application
@@ -127,18 +151,30 @@ async def health_check():
     Health check endpoint for container orchestration.
 
     Returns:
-        dict: Health status
+        dict: Health status with Ollama server count
     """
     try:
-        ollama_connected = await ollama_service.check_health()
+        from sqlalchemy import select
+
+        from app.db.models.ollama_server import OllamaServer
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(OllamaServer).where(
+                    OllamaServer.is_active == True, OllamaServer.status == "online"
+                )
+            )
+            online_servers = len(result.scalars().all())
+
         return {
             "status": "healthy",
-            "ollama_connected": True,
+            "online_servers": online_servers,
         }
-    except Exception:
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
         return {
             "status": "degraded",
-            "ollama_connected": False,
+            "online_servers": 0,
         }
 
 

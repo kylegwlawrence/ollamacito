@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_chat_or_404, get_db
 from app.core.logging import get_logger
 from app.db.models import Chat, Message
+from app.db.models.ollama_server import OllamaServer
 from app.schemas.chat import (
     ChatCreate,
     ChatListResponse,
@@ -79,6 +80,7 @@ async def list_chats(
                 "model": chat.model,
                 "is_archived": chat.is_archived,
                 "project_id": chat.project_id,
+                "ollama_server_id": chat.ollama_server_id,
                 "created_at": chat.created_at,
                 "updated_at": chat.updated_at,
                 "message_count": len(chat.messages),
@@ -148,23 +150,46 @@ async def create_chat(
     Create a new chat.
 
     Args:
-        chat_data: Chat creation data
+        chat_data: Chat creation data (including optional ollama_server_id)
         db: Database session
 
     Returns:
         ChatResponse: Created chat
+
+    Raises:
+        HTTPException: If server ID is invalid or server not active
     """
     try:
+        # Validate ollama_server_id if provided
+        if chat_data.ollama_server_id:
+            server_result = await db.execute(
+                select(OllamaServer).where(OllamaServer.id == chat_data.ollama_server_id)
+            )
+            server = server_result.scalar_one_or_none()
+            if not server:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Ollama server with ID {chat_data.ollama_server_id} not found",
+                )
+            if not server.is_active:
+                logger.warning(
+                    f"Creating chat with inactive server '{server.name}' (ID: {server.id})"
+                )
+
         new_chat = Chat(
             title=chat_data.title,
             model=chat_data.model,
             project_id=chat_data.project_id,
+            ollama_server_id=chat_data.ollama_server_id,
         )
         db.add(new_chat)
         await db.flush()
         await db.refresh(new_chat)
 
-        logger.info(f"Created chat {new_chat.id}")
+        logger.info(
+            f"Created chat {new_chat.id} with model '{new_chat.model}'"
+            + (f" on server {new_chat.ollama_server_id}" if new_chat.ollama_server_id else "")
+        )
 
         return ChatResponse(
             id=new_chat.id,
@@ -172,11 +197,14 @@ async def create_chat(
             model=new_chat.model,
             is_archived=new_chat.is_archived,
             project_id=new_chat.project_id,
+            ollama_server_id=new_chat.ollama_server_id,
             created_at=new_chat.created_at,
             updated_at=new_chat.updated_at,
             message_count=0,
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating chat: {e}")
         raise HTTPException(

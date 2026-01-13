@@ -19,6 +19,9 @@ class ChatCreate(ChatBase):
     """Schema for creating a new chat."""
 
     project_id: Optional[UUID] = Field(None, description="Optional project ID to associate chat with")
+    ollama_server_id: Optional[UUID] = Field(
+        None, description="Optional Ollama server ID to use for this chat"
+    )
 
 
 class ChatUpdate(BaseModel):
@@ -35,6 +38,7 @@ class ChatResponse(ChatBase):
     id: UUID
     is_archived: bool
     project_id: Optional[UUID] = Field(None, description="Project ID if chat belongs to a project")
+    ollama_server_id: Optional[UUID] = Field(None, description="Ollama server ID for this chat")
     created_at: datetime
     updated_at: datetime
     message_count: Optional[int] = Field(None, description="Number of messages in chat")

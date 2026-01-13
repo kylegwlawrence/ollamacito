@@ -1,9 +1,10 @@
 """
 Service for interacting with Ollama API.
 """
+import asyncio
 import json
 from pathlib import Path
-from typing import AsyncGenerator, Dict, List, Optional
+from typing import AsyncGenerator, Dict, List, Optional, Tuple
 
 import httpx
 import ollama
@@ -17,43 +18,63 @@ logger = get_logger(__name__)
 
 
 class OllamaService:
-    """Service for managing Ollama API interactions."""
+    """Service for managing Ollama API interactions with multiple servers."""
 
     def __init__(self):
-        """Initialize Ollama service with base URL from settings."""
-        self.base_url = settings.ollama_base_url
-        self.client = AsyncClient(host=self.base_url)
-        logger.info(f"OllamaService initialized with base URL: {self.base_url}")
+        """Initialize Ollama service with connection pooling support."""
+        self._clients: Dict[str, AsyncClient] = {}
+        self._client_lock = asyncio.Lock()
+        logger.info("OllamaService initialized with multi-server support")
 
-    async def check_health(self) -> bool:
+    async def get_client(self, base_url: str) -> AsyncClient:
         """
-        Check if Ollama is accessible.
+        Get or create AsyncClient for specified URL.
+        Implements connection pooling with caching.
+
+        Args:
+            base_url: Ollama server URL
 
         Returns:
-            bool: True if Ollama is accessible
+            AsyncClient: Ollama client for the server
+        """
+        async with self._client_lock:
+            if base_url not in self._clients:
+                self._clients[base_url] = AsyncClient(host=base_url)
+                logger.info(f"Created new Ollama client for {base_url}")
+            return self._clients[base_url]
 
-        Raises:
-            OllamaConnectionError: If unable to connect
+    async def check_health(self, base_url: str) -> Tuple[bool, Optional[str]]:
+        """
+        Check if Ollama server is accessible.
+
+        Args:
+            base_url: Ollama server URL to check
+
+        Returns:
+            Tuple[bool, Optional[str]]: (is_healthy, error_message)
         """
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{self.base_url}/api/tags",
+                    f"{base_url}/api/tags",
                     timeout=5.0,
                 )
                 response.raise_for_status()
-                logger.info("Ollama health check passed")
-                return True
+                logger.info(f"Health check passed for {base_url}")
+                return (True, None)
         except httpx.RequestError as e:
-            logger.error(f"Ollama connection error: {e}")
-            raise OllamaConnectionError(self.base_url, str(e))
+            logger.error(f"Connection error for {base_url}: {e}")
+            return (False, f"Connection error: {str(e)}")
         except httpx.HTTPStatusError as e:
-            logger.error(f"Ollama HTTP error: {e}")
-            raise OllamaConnectionError(self.base_url, f"HTTP {e.response.status_code}")
+            logger.error(f"HTTP error for {base_url}: {e}")
+            return (False, f"HTTP {e.response.status_code}")
 
-    async def get_models(self) -> List[Dict]:
+    async def get_models(self, base_url: str) -> List[Dict]:
         """
-        Get list of available Ollama models.
+        Get list of available Ollama models from specific server.
+
+        Args:
+            base_url: Ollama server URL
 
         Returns:
             List[Dict]: List of model information
@@ -62,19 +83,21 @@ class OllamaService:
             OllamaConnectionError: If unable to connect to Ollama
         """
         try:
-            response = await self.client.list()
+            client = await self.get_client(base_url)
+            response = await client.list()
             models = response.get("models", [])
-            logger.info(f"Retrieved {len(models)} models from Ollama")
+            logger.info(f"Retrieved {len(models)} models from {base_url}")
             return models
         except Exception as e:
-            logger.error(f"Error retrieving models: {e}")
-            raise OllamaConnectionError(self.base_url, str(e))
+            logger.error(f"Error retrieving models from {base_url}: {e}")
+            raise OllamaConnectionError(base_url, str(e))
 
-    async def check_model_exists(self, model_name: str) -> bool:
+    async def check_model_exists(self, base_url: str, model_name: str) -> bool:
         """
-        Check if a specific model exists.
+        Check if a specific model exists on server.
 
         Args:
+            base_url: Ollama server URL
             model_name: Name of the model to check
 
         Returns:
@@ -84,12 +107,12 @@ class OllamaService:
             OllamaConnectionError: If unable to connect to Ollama
         """
         try:
-            models = await self.get_models()
+            models = await self.get_models(base_url)
             model_names = [m.get("name", "").split(":")[0] for m in models]
             exists = model_name in model_names or any(
                 model_name in m.get("name", "") for m in models
             )
-            logger.debug(f"Model '{model_name}' exists: {exists}")
+            logger.debug(f"Model '{model_name}' exists on {base_url}: {exists}")
             return exists
         except OllamaConnectionError:
             raise
@@ -99,6 +122,7 @@ class OllamaService:
 
     async def chat(
         self,
+        base_url: str,
         model: str,
         messages: List[Dict[str, str]],
         temperature: Optional[float] = None,
@@ -108,6 +132,7 @@ class OllamaService:
         Send a non-streaming chat request to Ollama.
 
         Args:
+            base_url: Ollama server URL
             model: Model name to use
             messages: List of message dicts with 'role' and 'content'
             temperature: Sampling temperature (0.0-2.0)
@@ -121,31 +146,34 @@ class OllamaService:
             OllamaModelNotFoundError: If model not found
         """
         try:
+            client = await self.get_client(base_url)
+
             options = {}
             if temperature is not None:
                 options["temperature"] = temperature
             if max_tokens is not None:
                 options["num_ctx"] = max_tokens
 
-            logger.info(f"Sending chat request to model '{model}'")
-            response = await self.client.chat(
+            logger.info(f"Sending chat request to model '{model}' on {base_url}")
+            response = await client.chat(
                 model=model,
                 messages=messages,
                 options=options if options else None,
                 stream=False,
             )
-            logger.info(f"Received response from model '{model}'")
+            logger.info(f"Received response from model '{model}' on {base_url}")
             return response
         except Exception as e:
             error_str = str(e).lower()
             if "not found" in error_str or "does not exist" in error_str:
-                logger.error(f"Model '{model}' not found")
+                logger.error(f"Model '{model}' not found on {base_url}")
                 raise OllamaModelNotFoundError(model)
             logger.error(f"Error in chat request: {e}")
-            raise OllamaConnectionError(self.base_url, str(e))
+            raise OllamaConnectionError(base_url, str(e))
 
     async def stream_chat(
         self,
+        base_url: str,
         model: str,
         messages: List[Dict[str, str]],
         temperature: Optional[float] = None,
@@ -155,6 +183,7 @@ class OllamaService:
         Send a streaming chat request to Ollama.
 
         Args:
+            base_url: Ollama server URL
             model: Model name to use
             messages: List of message dicts with 'role' and 'content'
             temperature: Sampling temperature (0.0-2.0)
@@ -168,15 +197,17 @@ class OllamaService:
             OllamaModelNotFoundError: If model not found
         """
         try:
+            client = await self.get_client(base_url)
+
             options = {}
             if temperature is not None:
                 options["temperature"] = temperature
             if max_tokens is not None:
                 options["num_ctx"] = max_tokens
 
-            logger.info(f"Starting streaming chat with model '{model}'")
+            logger.info(f"Starting streaming chat with model '{model}' on {base_url}")
 
-            stream = await self.client.chat(
+            stream = await client.chat(
                 model=model,
                 messages=messages,
                 options=options if options else None,
@@ -189,15 +220,15 @@ class OllamaService:
                     if content:
                         yield content
 
-            logger.info(f"Streaming chat completed for model '{model}'")
+            logger.info(f"Streaming chat completed for model '{model}' on {base_url}")
 
         except Exception as e:
             error_str = str(e).lower()
             if "not found" in error_str or "does not exist" in error_str:
-                logger.error(f"Model '{model}' not found")
+                logger.error(f"Model '{model}' not found on {base_url}")
                 raise OllamaModelNotFoundError(model)
             logger.error(f"Error in streaming chat: {e}")
-            raise OllamaConnectionError(self.base_url, str(e))
+            raise OllamaConnectionError(base_url, str(e))
 
     def _load_title_prompt(self) -> str:
         """
@@ -224,14 +255,16 @@ class OllamaService:
 
     async def generate_chat_title(
         self,
+        base_url: str,
         user_messages: List[str],
         assistant_messages: List[str],
     ) -> str:
         """
-        Generate a chat title using SummLlama3.2 model.
+        Generate a chat title using title generation model.
         Dynamically loads prompt from make_chat_title_prompt.md file.
 
         Args:
+            base_url: Ollama server URL
             user_messages: List of user message contents (max 2)
             assistant_messages: List of assistant message contents (max 2)
 
@@ -243,6 +276,8 @@ class OllamaService:
             OllamaModelNotFoundError: If model not found
         """
         try:
+            client = await self.get_client(base_url)
+
             # Load prompt from file
             system_prompt = self._load_title_prompt()
 
@@ -262,7 +297,7 @@ class OllamaService:
             # Ask for title generation
             messages.append({"role": "user", "content": "Generate a short title for this conversation."})
 
-            logger.info(f"Generating title using model '{settings.title_generation_model}'")
+            logger.info(f"Generating title using model '{settings.title_generation_model}' on {base_url}")
 
             # Call Ollama with title generation settings
             options = {
@@ -270,7 +305,7 @@ class OllamaService:
                 "temperature": 0.2,
             }
 
-            response = await self.client.chat(
+            response = await client.chat(
                 model=settings.title_generation_model,
                 messages=messages,
                 options=options,
@@ -297,10 +332,10 @@ class OllamaService:
         except Exception as e:
             error_str = str(e).lower()
             if "not found" in error_str or "does not exist" in error_str:
-                logger.error(f"Title generation model '{settings.title_generation_model}' not found")
+                logger.error(f"Title generation model '{settings.title_generation_model}' not found on {base_url}")
                 raise OllamaModelNotFoundError(settings.title_generation_model)
             logger.error(f"Error in title generation: {e}")
-            raise OllamaConnectionError(self.base_url, str(e))
+            raise OllamaConnectionError(base_url, str(e))
 
 
 # Create global instance

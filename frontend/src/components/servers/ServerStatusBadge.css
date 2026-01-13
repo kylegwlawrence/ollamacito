@@ -1,0 +1,60 @@
+.server-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.server-status-badge--small {
+  font-size: 0.75rem;
+}
+
+.server-status-badge--medium {
+  font-size: 0.875rem;
+}
+
+.server-status-badge--large {
+  font-size: 1rem;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.server-status-badge--small .status-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.server-status-badge--large .status-dot {
+  width: 10px;
+  height: 10px;
+}
+
+.status-dot--green {
+  background-color: #10b981;
+  box-shadow: 0 0 4px rgba(16, 185, 129, 0.5);
+}
+
+.status-dot--red {
+  background-color: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+}
+
+.status-dot--orange {
+  background-color: #f97316;
+  box-shadow: 0 0 4px rgba(249, 115, 22, 0.5);
+}
+
+.status-dot--gray {
+  background-color: #6b7280;
+  box-shadow: 0 0 4px rgba(107, 114, 128, 0.5);
+}
+
+.status-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}

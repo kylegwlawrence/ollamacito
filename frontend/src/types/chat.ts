@@ -5,7 +5,8 @@ export interface Chat {
   title: string
   model: string
   is_archived: boolean
-  project_id?: string | null
+  project_id: string | null
+  ollama_server_id: string | null
   created_at: string
   updated_at: string
   message_count?: number
@@ -15,6 +16,7 @@ export interface ChatCreate {
   title: string
   model: string
   project_id?: string | null
+  ollama_server_id?: string | null
 }
 
 export interface ChatUpdate {

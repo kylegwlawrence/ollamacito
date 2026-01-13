@@ -2,13 +2,16 @@
 Database models for chats and messages.
 """
 import uuid
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.db.models.ollama_server import OllamaServer
 
 
 # Junction table for many-to-many relationship between messages and files
@@ -38,6 +41,11 @@ class Chat(Base, TimestampMixin):
         ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=True,
     )
+    ollama_server_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("ollama_servers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     # Relationships
     messages: Mapped[List["Message"]] = relationship(
@@ -54,6 +62,10 @@ class Chat(Base, TimestampMixin):
     )
     project: Mapped[Optional["Project"]] = relationship(
         "Project",
+        back_populates="chats",
+    )
+    ollama_server: Mapped[Optional["OllamaServer"]] = relationship(
+        "OllamaServer",
         back_populates="chats",
     )
 
