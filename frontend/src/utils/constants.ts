@@ -1,6 +1,6 @@
-// Default model is loaded from backend settings
+// Default model is loaded from backend settings (which reads from .env DEFAULT_MODEL)
+// Single source of truth: .env file in the project root
 // Frontend waits for backend to load before allowing chat creation
-// No hardcoded fallback - button shows "⏳ Loading..." until settings are available
 export const DEFAULT_TEMPERATURE = 0.7
 export const DEFAULT_MAX_TOKENS = 2048
 

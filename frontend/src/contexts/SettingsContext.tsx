@@ -3,11 +3,11 @@ import { settingsApi } from '@/services/settingsApi'
 import { getErrorMessage } from '@/utils/errorHandler'
 import type { Settings } from '@/types'
 
-// Default settings to use if loading fails or is still in progress
-// Note: This should match backend config.py default_model
+// Default settings to use while loading
+// The default_model will be fetched from backend (which reads from .env)
 const DEFAULT_SETTINGS: Settings = {
   id: 1,
-  default_model: 'mistral:7b',
+  default_model: '', // Will be loaded from backend
   default_temperature: 0.7,
   default_max_tokens: 2048,
   theme: 'dark',
