@@ -46,8 +46,10 @@ async def get_global_settings(
             settings = Settings(
                 id=1,
                 default_model=app_settings.default_model,
+                conversation_summarization_model=app_settings.title_generation_model,
                 default_temperature=0.7,
                 default_max_tokens=2048,
+                num_ctx=2048,
                 theme="dark",
             )
             db.add(settings)
@@ -89,8 +91,10 @@ async def update_global_settings(
             settings = Settings(
                 id=1,
                 default_model=app_settings.default_model,
+                conversation_summarization_model=app_settings.title_generation_model,
                 default_temperature=0.7,
                 default_max_tokens=2048,
+                num_ctx=2048,
                 theme="dark",
             )
             db.add(settings)
@@ -98,10 +102,14 @@ async def update_global_settings(
         # Update fields
         if settings_data.default_model is not None:
             settings.default_model = settings_data.default_model
+        if settings_data.conversation_summarization_model is not None:
+            settings.conversation_summarization_model = settings_data.conversation_summarization_model
         if settings_data.default_temperature is not None:
             settings.default_temperature = settings_data.default_temperature
         if settings_data.default_max_tokens is not None:
             settings.default_max_tokens = settings_data.default_max_tokens
+        if settings_data.num_ctx is not None:
+            settings.num_ctx = settings_data.num_ctx
         if settings_data.theme is not None:
             settings.theme = settings_data.theme
 

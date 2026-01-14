@@ -23,12 +23,22 @@ class Settings(Base, TimestampMixin):
         default=lambda: app_settings.default_model,
         nullable=False,
     )
+    conversation_summarization_model: Mapped[str] = mapped_column(
+        String(100),
+        default=lambda: app_settings.title_generation_model,
+        nullable=False,
+    )
     default_temperature: Mapped[float] = mapped_column(
         Float,
         default=0.7,
         nullable=False,
     )
     default_max_tokens: Mapped[int] = mapped_column(
+        Integer,
+        default=2048,
+        nullable=False,
+    )
+    num_ctx: Mapped[int] = mapped_column(
         Integer,
         default=2048,
         nullable=False,
@@ -46,6 +56,7 @@ class Settings(Base, TimestampMixin):
             name="valid_temperature",
         ),
         CheckConstraint("default_max_tokens > 0", name="positive_tokens"),
+        CheckConstraint("num_ctx > 0", name="positive_num_ctx"),
         CheckConstraint("theme IN ('dark', 'light')", name="valid_theme"),
     )
 

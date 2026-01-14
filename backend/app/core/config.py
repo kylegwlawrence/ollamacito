@@ -40,13 +40,13 @@ class Settings(BaseSettings):
         description="Base URL for Ollama API",
     )
     default_model: str = Field(
-        default="mistral:7b",
+        default="qwen2.5-coder:7b-instruct-q6_K",
         description="Default Ollama model to use",
     )
 
     # Title Generation Settings
     title_generation_model: str = Field(
-        default="mistral:7b",
+        default="llama3.2:3b-instruct-q4_K_M",
         description="Model to use for chat title generation",
     )
     title_generation_prompt_file: str = Field(
