@@ -196,7 +196,7 @@
 
 .sidebar__new-button:hover {
   background-color: var(--accent-color);
-  color: var(--bg-primary);
+  color: var(--text-primary);
   border-color: var(--accent-color);
 }
 

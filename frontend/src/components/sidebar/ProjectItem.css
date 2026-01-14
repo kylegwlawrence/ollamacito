@@ -10,12 +10,12 @@
 }
 
 .project-item:hover {
-  background-color: var(--bg-tertiary);
+  background-color: var(--accent-hover);
 }
 
 .project-item--active {
   background-color: var(--accent-color);
-  color: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .project-item--active .project-item__icon,
@@ -41,17 +41,18 @@
 
 .project-item__badge {
   background-color: var(--accent-color);
-  color: var(--bg-primary);
+  color: var(--bg-tertiary);
   padding: 0.125rem 0.5rem;
   border-radius: 1rem;
+  border: 1px solid var(--bg-secondary);
   font-size: 0.75rem;
   font-weight: 600;
   flex-shrink: 0;
 }
 
 .project-item--active .project-item__badge {
-  background-color: var(--bg-primary);
-  color: var(--accent-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .project-item__delete {
@@ -64,7 +65,7 @@
   height: 1.5rem;
   padding: 0;
   background: transparent;
-  color: var(--text-tertiary);
+  color: var(--text-primary);
   border: none;
   border-radius: var(--radius-sm);
   font-size: 1.25rem;
@@ -81,16 +82,16 @@
 
 .project-item__delete:hover {
   background-color: var(--error-color);
-  color: white;
+  color: var(--text-primary);
 }
 
 .project-item--active .project-item__delete {
-  color: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .project-item--active .project-item__delete:hover {
   background-color: rgba(0, 0, 0, 0.2);
-  color: white;
+  color: var(--text-primary);
 }
 
 .project-item__delete:active {
