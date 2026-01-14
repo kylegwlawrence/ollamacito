@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from 'react'
 
-type ViewType = 'chat' | 'project-detail' | 'project-settings'
+type ViewType = 'chat' | 'project-detail' | 'project-settings' | 'app-settings'
 
 interface ViewContextType {
   viewType: ViewType
@@ -8,6 +8,7 @@ interface ViewContextType {
   navigateToChat: () => void
   navigateToProject: (projectId: string) => void
   navigateToProjectSettings: (projectId: string) => void
+  navigateToAppSettings: () => void
 }
 
 const ViewContext = createContext<ViewContextType | undefined>(undefined)
@@ -31,6 +32,11 @@ export const ViewProvider = ({ children }: { children: ReactNode }) => {
     setCurrentProjectId(projectId)
   }
 
+  const navigateToAppSettings = () => {
+    setViewType('app-settings')
+    setCurrentProjectId(null)
+  }
+
   return (
     <ViewContext.Provider
       value={{
@@ -39,6 +45,7 @@ export const ViewProvider = ({ children }: { children: ReactNode }) => {
         navigateToChat,
         navigateToProject,
         navigateToProjectSettings,
+        navigateToAppSettings,
       }}
     >
       {children}

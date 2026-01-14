@@ -8,8 +8,10 @@ import type { Settings } from '@/types'
 const DEFAULT_SETTINGS: Settings = {
   id: 1,
   default_model: '', // Will be loaded from backend
+  conversation_summarization_model: '',
   default_temperature: 0.7,
   default_max_tokens: 2048,
+  num_ctx: 2048,
   theme: 'dark',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
@@ -20,6 +22,7 @@ interface SettingsContextType {
   loading: boolean
   error: string | null
   refreshSettings: () => Promise<void>
+  updateSettings: (updates: Partial<Settings>) => Promise<Settings | null>
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined)
@@ -43,12 +46,24 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
+  const updateSettings = async (updates: Partial<Settings>) => {
+    try {
+      setError(null)
+      const data = await settingsApi.updateGlobal(updates)
+      setSettings(data)
+      return data
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to update settings'))
+      return null
+    }
+  }
+
   useEffect(() => {
     refreshSettings()
   }, [])
 
   return (
-    <SettingsContext.Provider value={{ settings, loading, error, refreshSettings }}>
+    <SettingsContext.Provider value={{ settings, loading, error, refreshSettings, updateSettings }}>
       {children}
     </SettingsContext.Provider>
   )

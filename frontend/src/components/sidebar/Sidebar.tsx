@@ -19,7 +19,7 @@ export const Sidebar = () => {
   const { settings } = useSettings()
   const { models } = useModels()
   const { projects, loading: projectsLoading, createProject, deleteProject } = useProject()
-  const { viewType, currentProjectId, navigateToChat, navigateToProject } = useView()
+  const { viewType, currentProjectId, navigateToChat, navigateToProject, navigateToAppSettings } = useView()
   const { showToast } = useToast()
   const [selectedModel, setSelectedModel] = useState<string>(settings.default_model)
   const [projectsExpanded, setProjectsExpanded] = useState(true)
@@ -154,6 +154,15 @@ export const Sidebar = () => {
             ))}
           </select>
         </div>
+        <Button
+          onClick={navigateToAppSettings}
+          variant="secondary"
+          size="sm"
+          title="Application settings"
+          aria-label="Open application settings"
+        >
+          ⚙️ Settings
+        </Button>
       </div>
 
       {/* Projects Section */}
