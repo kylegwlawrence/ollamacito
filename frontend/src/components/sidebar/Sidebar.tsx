@@ -117,7 +117,7 @@ export const Sidebar = () => {
     <nav className="sidebar" aria-label="Main navigation">
       <div className="sidebar__header">
         <h1 className="sidebar__title">Ollama::cito</h1>
-        <img src="/green_logo_filled.png" alt="Logo" className="sidebar__logo"/>
+        <img src="/green_logo_3.png" alt="Logo" className="sidebar__logo"/>
         <Button
           onClick={handleCreateProject}
           variant="primary"
