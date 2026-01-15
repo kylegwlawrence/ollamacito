@@ -91,10 +91,15 @@ export const ChatContainer = () => {
               ← Back to Project
             </button>
           )}
-          <h2>{currentChat.title}</h2>
+          <h2 className="chat-container__title">{currentChat.title}</h2>
         </div>
         <span className="chat-container__model" aria-label={`Using model ${currentChat.model}`}>
-          {currentChat.model}
+          {currentChat.model.split(':').map((part, index) => (
+          <span key={index}>
+            {part}
+            {index < currentChat.model.split(':').length - 1 && <br />}
+          </span>
+          ))}
         </span>
       </header>
       <MessageList

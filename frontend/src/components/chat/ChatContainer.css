@@ -29,6 +29,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative;
 }
 
 .chat-container__header-left {
@@ -59,11 +60,17 @@
   transform: scale(0.98);
 }
 
-.chat-container__header h2 {
+.chat-container__title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--accent-color);
-  margin: 0;
+
+  max-width: 60%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
