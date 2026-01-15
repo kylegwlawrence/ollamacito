@@ -161,7 +161,7 @@ export const Sidebar = () => {
           title="Application settings"
           aria-label="Open application settings"
         >
-          ⚙️ Settings
+          Settings
         </Button>
       </div>
 
