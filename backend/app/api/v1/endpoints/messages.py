@@ -379,6 +379,18 @@ async def _prepare_stream(
 
         cascade = await _load_cascade(session, chat)
         attached_files = await _resolve_attached_files(session, chat, file_ids)
+        if attached_files:
+            logger.info(
+                "Attaching %d file(s) to chat %s: %s",
+                len(attached_files),
+                chat_id,
+                [
+                    f"{f.filename} ({len(f.content or '')}c)"
+                    for f in attached_files
+                ],
+            )
+        else:
+            logger.info("No files attached to chat %s for this turn", chat_id)
         ollama_messages = await _build_ollama_messages(
             session, chat, user_message, attached_files
         )
