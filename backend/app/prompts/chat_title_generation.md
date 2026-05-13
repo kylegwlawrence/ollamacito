@@ -2,4 +2,5 @@
 - You summarize the content from the user's first message and the assistant's first message
 - In your summary, capture the main topic of the conversation
 - The summary must be no longer than 6 words
-- Only return the summary. Do not explain your thought process.
+- Only return the summary. 
+- DO NOT explain your thought process.
