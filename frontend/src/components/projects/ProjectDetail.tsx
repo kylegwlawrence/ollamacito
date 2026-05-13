@@ -46,10 +46,14 @@ export const ProjectDetail = () => {
     }
   }, [currentProjectId])
 
+  // Initialize the selector from project / global default, but ONLY when those
+  // primitive values actually change. Previously this listed `currentProject`
+  // itself in the deps, which caused every project reload (e.g. after creating
+  // a chat) to clobber the user's manual selection.
   useEffect(() => {
     const modelToUse = currentProject?.default_model || settings.default_model
     setSelectedModel(modelToUse)
-  }, [currentProject?.default_model, settings.default_model, currentProject])
+  }, [currentProject?.default_model, settings.default_model])
 
   // Initialize settings form when project loads
   useEffect(() => {
