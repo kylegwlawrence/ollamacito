@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useView } from '@/contexts/ViewContext'
-import { useProject } from '@/contexts/ProjectContext'
-import { useChat } from '@/contexts/ChatContext'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useProjectsStore } from '@/stores/projectsStore'
+import { useChatStore } from '@/stores/chatStore'
 import { useChats } from '@/hooks/useChats'
-import { useSettings } from '@/contexts/SettingsContext'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { useModels } from '@/hooks/useModels'
-import { useToast } from '@/contexts/ToastContext'
+import { useToastStore } from '@/stores/toastStore'
 import { projectApi } from '@/services/projectApi'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
@@ -16,13 +16,16 @@ import type { Chat } from '@/types'
 import './ProjectDetail.css'
 
 export const ProjectDetail = () => {
-  const { currentProjectId, navigateToChat } = useView()
-  const { currentProject, setCurrentProject, updateProject } = useProject()
-  const { setCurrentChat } = useChat()
+  const { projectId: currentProjectId } = useParams<{ projectId: string }>()
+  const navigate = useNavigate()
+  const currentProject = useProjectsStore((s) => s.currentProject)
+  const setCurrentProject = useProjectsStore((s) => s.setCurrentProject)
+  const updateProject = useProjectsStore((s) => s.updateProject)
+  const setCurrentChat = useChatStore((s) => s.setCurrentChat)
   const { createChat, updateChat, deleteChat } = useChats()
-  const { settings } = useSettings()
+  const settings = useSettingsStore((s) => s.settings)
   const { models } = useModels()
-  const { showToast } = useToast()
+  const showToast = useToastStore((s) => s.showToast)
   const [projectChats, setProjectChats] = useState<Chat[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -113,7 +116,7 @@ export const ProjectDetail = () => {
       if (newChat) {
         setProjectChats((prev) => [newChat, ...prev])
         setCurrentChat(newChat)
-        navigateToChat()
+        navigate(`/chats/${newChat.id}`)
       } else {
         showToast('Failed to create chat', 'error')
       }
@@ -125,7 +128,7 @@ export const ProjectDetail = () => {
 
   const handleSelectChat = (chat: Chat) => {
     setCurrentChat(chat)
-    navigateToChat()
+    navigate(`/chats/${chat.id}`)
   }
 
   const handleRenameChat = async (chatId: string, newTitle: string) => {
@@ -216,7 +219,7 @@ export const ProjectDetail = () => {
       <div className="project-detail project-detail--error">
         <h2>Error</h2>
         <p>{error || 'Project not found'}</p>
-        <Button onClick={() => navigateToChat()} variant="primary">
+        <Button onClick={() => navigate('/')} variant="primary">
           Back to Chats
         </Button>
       </div>

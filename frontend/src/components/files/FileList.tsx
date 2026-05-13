@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from '../common/Button'
-import { useToast } from '@/contexts/ToastContext'
+import { useToastStore } from '@/stores/toastStore'
 import { projectApi } from '@/services/projectApi'
 import type { ProjectFile } from '@/types'
 import './FileList.css'
@@ -14,7 +14,7 @@ interface FileListProps {
 export const FileList = ({ projectId, files, onFileDeleted }: FileListProps) => {
   const [expandedFileId, setExpandedFileId] = useState<string | null>(null)
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
-  const { showToast } = useToast()
+  const showToast = useToastStore((s) => s.showToast)
 
   const handleDelete = async (fileId: string, filename: string) => {
     if (!window.confirm(`Are you sure you want to delete "${filename}"?`)) {

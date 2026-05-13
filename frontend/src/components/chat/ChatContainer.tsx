@@ -1,41 +1,54 @@
 import { useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { MessageList } from './MessageList'
 import { MessageInput } from './MessageInput'
-import { useChat } from '@/contexts/ChatContext'
-import { useProject } from '@/contexts/ProjectContext'
-import { useView } from '@/contexts/ViewContext'
+import { useChatStore } from '@/stores/chatStore'
+import { useProjectsStore } from '@/stores/projectsStore'
 import { useStreaming } from '@/hooks/useStreaming'
 import { chatApi } from '@/services/chatApi'
 import './ChatContainer.css'
 
 export const ChatContainer = () => {
-  const { currentChat, messages, setMessages } = useChat()
-  const { currentProject } = useProject()
-  const { navigateToProject } = useView()
+  const { chatId } = useParams<{ chatId?: string }>()
+  const navigate = useNavigate()
+
+  const currentChat = useChatStore((s) => s.currentChat)
+  const setCurrentChat = useChatStore((s) => s.setCurrentChat)
+  const messages = useChatStore((s) => s.messages)
+  const setMessages = useChatStore((s) => s.setMessages)
+  const currentProject = useProjectsStore((s) => s.currentProject)
+
   const streaming = useStreaming(() => {
     // Reload messages after streaming completes
     if (currentChat) {
-      loadMessages()
+      loadMessages(currentChat.id)
     }
   })
 
-  const loadMessages = async () => {
-    if (!currentChat) return
+  const loadMessages = async (id: string) => {
     try {
-      const chatData = await chatApi.get(currentChat.id)
+      const chatData = await chatApi.get(id)
+      setCurrentChat(chatData)
       setMessages(chatData.messages)
     } catch (error) {
       console.error('Failed to load messages:', error)
     }
   }
 
+  // Sync store with URL: route param drives which chat is loaded.
   useEffect(() => {
-    if (currentChat) {
-      loadMessages()
+    if (chatId) {
+      // If the store already has it (sidebar pre-populated), don't refetch.
+      if (currentChat?.id === chatId) {
+        return
+      }
+      loadMessages(chatId)
     } else {
+      setCurrentChat(null)
       setMessages([])
     }
-  }, [currentChat?.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId])
 
   // Get project files if chat belongs to a project
   const projectFiles = currentChat?.project_id && currentProject?.id === currentChat.project_id
@@ -84,7 +97,7 @@ export const ChatContainer = () => {
           {currentChat.project_id && (
             <button
               className="chat-container__back-button"
-              onClick={() => navigateToProject(currentChat.project_id!)}
+              onClick={() => navigate(`/projects/${currentChat.project_id}`)}
               title="Back to project"
               aria-label="Back to project"
             >

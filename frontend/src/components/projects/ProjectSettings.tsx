@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react'
-import { useView } from '@/contexts/ViewContext'
-import { useProject } from '@/contexts/ProjectContext'
-import { useChat } from '@/contexts/ChatContext'
-import { useToast } from '@/contexts/ToastContext'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useProjectsStore } from '@/stores/projectsStore'
+import { useChatStore } from '@/stores/chatStore'
+import { useToastStore } from '@/stores/toastStore'
 import { useModels } from '@/hooks/useModels'
-import { useSettings } from '@/contexts/SettingsContext'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { projectApi } from '@/services/projectApi'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import './ProjectSettings.css'
 
 export const ProjectSettings = () => {
-  const { currentProjectId, navigateToProject, navigateToChat } = useView()
-  const { currentProject, setCurrentProject, updateProject, deleteProject } = useProject()
-  const { setCurrentChat, setMessages } = useChat()
-  const { showToast } = useToast()
+  const { projectId: currentProjectId } = useParams<{ projectId: string }>()
+  const navigate = useNavigate()
+  const currentProject = useProjectsStore((s) => s.currentProject)
+  const setCurrentProject = useProjectsStore((s) => s.setCurrentProject)
+  const updateProject = useProjectsStore((s) => s.updateProject)
+  const deleteProject = useProjectsStore((s) => s.deleteProject)
+  const setCurrentChat = useChatStore((s) => s.setCurrentChat)
+  const setMessages = useChatStore((s) => s.setMessages)
+  const showToast = useToastStore((s) => s.showToast)
   const { models } = useModels()
-  const { settings } = useSettings()
+  const settings = useSettingsStore((s) => s.settings)
 
   const [name, setName] = useState('')
   const [customInstructions, setCustomInstructions] = useState('')
@@ -123,7 +128,7 @@ export const ProjectSettings = () => {
       setCurrentChat(null)
       setMessages([])
       showToast('Project deleted successfully', 'success')
-      navigateToChat()
+      navigate('/')
     } catch (err) {
       console.error('Failed to delete project:', err)
       showToast('Failed to delete project', 'error')
@@ -140,7 +145,7 @@ export const ProjectSettings = () => {
         return
       }
     }
-    navigateToProject(currentProjectId!)
+    navigate(`/projects/${currentProjectId}`)
   }
 
   const handleCancel = () => {
@@ -167,7 +172,7 @@ export const ProjectSettings = () => {
       <div className="project-settings project-settings--error">
         <h2>Error</h2>
         <p>{error}</p>
-        <Button onClick={() => navigateToChat()} variant="primary">
+        <Button onClick={() => navigate('/')} variant="primary">
           Back to Chats
         </Button>
       </div>

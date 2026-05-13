@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useChat } from '@/contexts/ChatContext'
+import { useMatch, useNavigate } from 'react-router-dom'
+import { useChatStore } from '@/stores/chatStore'
 import { useChats } from '@/hooks/useChats'
-import { useSettings } from '@/contexts/SettingsContext'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { useModels } from '@/hooks/useModels'
-import { useProject } from '@/contexts/ProjectContext'
-import { useView } from '@/contexts/ViewContext'
-import { useToast } from '@/contexts/ToastContext'
+import { useProjectsStore } from '@/stores/projectsStore'
+import { useToastStore } from '@/stores/toastStore'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ChatItem } from './ChatItem'
@@ -14,13 +14,23 @@ import type { Chat } from '@/types'
 import './Sidebar.css'
 
 export const Sidebar = () => {
-  const { currentChat, setCurrentChat } = useChat()
+  const currentChat = useChatStore((s) => s.currentChat)
+  const setCurrentChat = useChatStore((s) => s.setCurrentChat)
   const { chats, loading, loadChats, createChat, updateChat, deleteChat } = useChats()
-  const { settings } = useSettings()
+  const settings = useSettingsStore((s) => s.settings)
   const { models } = useModels()
-  const { projects, loading: projectsLoading, createProject, deleteProject } = useProject()
-  const { viewType, currentProjectId, navigateToChat, navigateToProject, navigateToAppSettings } = useView()
-  const { showToast } = useToast()
+  const projects = useProjectsStore((s) => s.projects)
+  const projectsLoading = useProjectsStore((s) => s.loading)
+  const createProject = useProjectsStore((s) => s.createProject)
+  const deleteProject = useProjectsStore((s) => s.deleteProject)
+  const showToast = useToastStore((s) => s.showToast)
+
+  // URL-derived state — used for highlighting the active project + deciding
+  // where "go back to chat" navigates after a destructive action.
+  const navigate = useNavigate()
+  const projectMatch = useMatch('/projects/:projectId/*')
+  const currentProjectId = projectMatch?.params.projectId ?? null
+
   const [selectedModel, setSelectedModel] = useState<string>(settings.default_model)
   const [projectsExpanded, setProjectsExpanded] = useState(true)
   const [chatsExpanded, setChatsExpanded] = useState(true)
@@ -40,6 +50,7 @@ export const Sidebar = () => {
     })
     if (newChat) {
       setCurrentChat(newChat)
+      navigate(`/chats/${newChat.id}`)
     }
   }
 
@@ -62,13 +73,14 @@ export const Sidebar = () => {
       await deleteChat(chatId)
       if (currentChat?.id === chatId) {
         setCurrentChat(null)
+        navigate('/')
       }
     }
   }
 
   const handleSelectChat = (chat: Chat) => {
     setCurrentChat(chat)
-    navigateToChat()
+    navigate(`/chats/${chat.id}`)
   }
 
   const handleCreateProject = async () => {
@@ -79,7 +91,7 @@ export const Sidebar = () => {
       const newProject = await createProject(name.trim())
       if (newProject) {
         showToast('Project created successfully', 'success')
-        navigateToProject(newProject.id)
+        navigate(`/projects/${newProject.id}`)
       } else {
         showToast('Failed to create project', 'error')
       }
@@ -100,9 +112,8 @@ export const Sidebar = () => {
       await deleteProject(projectId)
       showToast('Project deleted successfully', 'success')
       if (currentProjectId === projectId) {
-        // Clear chat state to show clean landing page
         setCurrentChat(null)
-        navigateToChat()
+        navigate('/')
       }
     } catch (err) {
       console.error('Failed to delete project:', err)
@@ -110,14 +121,13 @@ export const Sidebar = () => {
     }
   }
 
-  // Filter standalone chats (not in any project)
-  const standaloneChats = chats.filter(chat => !chat.project_id)
+  const standaloneChats = chats.filter((chat) => !chat.project_id)
 
   return (
     <nav className="sidebar" aria-label="Main navigation">
       <div className="sidebar__header">
         <h1 className="sidebar__title">Ollama::cito</h1>
-        <img src="/green_logo_3.png" alt="Logo" className="sidebar__logo"/>
+        <img src="/green_logo_3.png" alt="Logo" className="sidebar__logo" />
         <Button
           onClick={handleCreateProject}
           variant="primary"
@@ -155,7 +165,7 @@ export const Sidebar = () => {
           </select>
         </div>
         <Button
-          onClick={navigateToAppSettings}
+          onClick={() => navigate('/settings')}
           variant="secondary"
           size="sm"
           title="Application settings"
@@ -191,8 +201,8 @@ export const Sidebar = () => {
                 <ProjectItem
                   key={project.id}
                   project={project}
-                  isActive={viewType === 'project-detail' && currentProjectId === project.id}
-                  onSelect={() => navigateToProject(project.id)}
+                  isActive={currentProjectId === project.id}
+                  onSelect={() => navigate(`/projects/${project.id}`)}
                   onDelete={() => handleDeleteProject(project.id, project.chat_count)}
                 />
               ))

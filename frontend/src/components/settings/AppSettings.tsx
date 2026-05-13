@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
-import { useView } from '@/contexts/ViewContext'
-import { useSettings } from '@/contexts/SettingsContext'
-import { useToast } from '@/contexts/ToastContext'
+import { useNavigate } from 'react-router-dom'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useToastStore } from '@/stores/toastStore'
 import { useModels } from '@/hooks/useModels'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import './AppSettings.css'
 
 export const AppSettings = () => {
-  const { navigateToChat } = useView()
-  const { settings, loading: settingsLoading, updateSettings } = useSettings()
-  const { showToast } = useToast()
+  const navigate = useNavigate()
+  const settings = useSettingsStore((s) => s.settings)
+  const settingsLoading = useSettingsStore((s) => s.loading)
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
+  const showToast = useToastStore((s) => s.showToast)
   const { models } = useModels()
 
   const [defaultModel, setDefaultModel] = useState<string>('')
@@ -93,7 +95,7 @@ export const AppSettings = () => {
         return
       }
     }
-    navigateToChat()
+    navigate('/')
   }
 
   if (settingsLoading) {

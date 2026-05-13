@@ -1,6 +1,6 @@
 import { useState, useRef, ChangeEvent } from 'react'
 import { Button } from '../common/Button'
-import { useToast } from '@/contexts/ToastContext'
+import { useToastStore } from '@/stores/toastStore'
 import type { ProjectFileCreate } from '@/types'
 import './FileUpload.css'
 
@@ -12,7 +12,7 @@ interface FileUploadProps {
 export const FileUpload = ({ projectId, onUploadSuccess }: FileUploadProps) => {
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { showToast } = useToast()
+  const showToast = useToastStore((s) => s.showToast)
 
   const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]

@@ -1,8 +1,9 @@
-import { useToast } from '@/contexts/ToastContext'
+import { useToastStore } from '@/stores/toastStore'
 import './ToastContainer.css'
 
 export const ToastContainer = () => {
-  const { toasts, removeToast } = useToast()
+  const toasts = useToastStore((s) => s.toasts)
+  const removeToast = useToastStore((s) => s.removeToast)
 
   return (
     <div className="toast-container" aria-live="polite" aria-atomic="false">
