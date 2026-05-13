@@ -1,0 +1,30 @@
+version: '3.8'
+
+# Dev overrides for `docker-compose.yml`. Applied via
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# (`make dev`)
+#
+# - backend: build from Dockerfile.dev (dev deps + uvicorn --reload);
+#   mount ./backend so code edits hot-reload
+# - frontend: build from Dockerfile.dev (Vite dev server on 5173);
+#   mount ./frontend for HMR; preserve container node_modules via
+#   an anonymous volume so the host's missing node_modules does not
+#   shadow what the container installed
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
