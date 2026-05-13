@@ -11,7 +11,7 @@ never actually call the host's Ollama process.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, Generator, List, Optional
 from uuid import uuid4
 
 import httpx
@@ -23,6 +23,21 @@ from app.db.models import Chat
 from app.db.session import AsyncSessionLocal
 from app.main import app
 from app.services import ollama_service as ollama_module
+
+
+@pytest.fixture(scope="session")
+def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
+    """Session-scoped event loop.
+
+    The app's `AsyncSessionLocal` / engine are module-level singletons whose
+    asyncpg connection pool is bound to whatever loop first uses it. Without
+    a session-scoped loop, each test gets a fresh loop and reuses pool
+    connections from the previous loop, which raises "Future attached to a
+    different loop" at fixture setup time.
+    """
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
 
 @pytest_asyncio.fixture
