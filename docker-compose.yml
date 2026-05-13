@@ -12,7 +12,9 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # Use the configured POSTGRES_USER so the check works regardless of
+      # whether the volume was initialized with `postgres` or a custom user.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 0
