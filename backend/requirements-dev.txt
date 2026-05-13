@@ -2,15 +2,12 @@
 -r requirements.txt
 
 # Testing
-pytest==8.0.0
+pytest==7.4.4  # bounded by pytest-asyncio==0.23.4 which requires pytest<8
 pytest-asyncio==0.23.4
 pytest-cov==4.1.0
-httpx==0.27.0
+httpx==0.25.2  # bounded by ollama==0.1.6 which requires httpx<0.26
 
 # Code Quality
 black==24.1.1
 ruff==0.2.1
 mypy==1.8.0
-
-# Type Stubs
-types-python-dotenv==1.0.0.20240106
