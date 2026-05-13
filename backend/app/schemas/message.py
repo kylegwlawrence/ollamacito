@@ -37,6 +37,7 @@ class MessageResponse(MessageBase):
     id: UUID
     chat_id: UUID
     tokens_used: Optional[int] = None
+    truncated: bool = False
     attached_files: List[AttachedFileInfo] = Field(default_factory=list)
     created_at: datetime
 

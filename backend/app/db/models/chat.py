@@ -79,6 +79,7 @@ class Message(Base, TimestampMixin):
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     tokens_used: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Relationships
     chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")

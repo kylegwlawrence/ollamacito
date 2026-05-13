@@ -3,19 +3,22 @@ API endpoints for message management and streaming.
 """
 import asyncio
 import json
-from typing import List
+import uuid as uuid_lib
+from contextlib import aclosing
+from dataclasses import dataclass
+from typing import AsyncGenerator, Dict, List, Optional, Tuple
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_chat_or_404, get_db
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models import Chat, ChatSettings, Message, Project, ProjectFile, Settings
+from app.db.session import AsyncSessionLocal
 from app.schemas.message import MessageCreate, MessageListResponse, MessageResponse
 from app.services.ollama_service import ollama_service
 from app.utils.exceptions import OllamaConnectionError
@@ -24,92 +27,243 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
-async def generate_and_update_title(session: AsyncSession, chat_id: UUID) -> None:
-    """
-    Generate title for a chat after 1st assistant response.
-    Uses first user message and first assistant message as context.
-    Implements retry logic: retries once on failure.
+# Hardcoded fallbacks used when no settings row exists yet.
+_FALLBACK_TEMPERATURE = 0.7
+_FALLBACK_MAX_TOKENS = 2048
+_FALLBACK_NUM_CTX = 2048
 
-    Args:
-        session: Database session
-        chat_id: Chat UUID
+
+@dataclass
+class _Cascade:
+    """Resolved generation parameters for a single stream invocation."""
+
+    temperature: float
+    max_tokens: int
+    num_ctx: int
+    title_model: Optional[str]
+
+
+async def _load_cascade(session: AsyncSession, chat: Chat) -> _Cascade:
+    """
+    Resolve temperature, max_tokens, num_ctx from chat → project → global → defaults.
+    Also returns the title-generation model from the Settings row when present.
+    """
+    global_settings = (
+        await session.execute(select(Settings).where(Settings.id == 1))
+    ).scalar_one_or_none()
+
+    chat_settings = (
+        await session.execute(
+            select(ChatSettings).where(ChatSettings.chat_id == chat.id)
+        )
+    ).scalar_one_or_none()
+
+    project: Optional[Project] = None
+    if chat.project_id:
+        project = (
+            await session.execute(select(Project).where(Project.id == chat.project_id))
+        ).scalar_one_or_none()
+
+    # temperature cascade
+    if chat_settings and chat_settings.temperature is not None:
+        temperature = chat_settings.temperature
+    elif project and project.temperature is not None:
+        temperature = project.temperature
+    elif global_settings:
+        temperature = global_settings.default_temperature
+    else:
+        temperature = _FALLBACK_TEMPERATURE
+
+    # max_tokens cascade (Ollama num_predict — max tokens to generate)
+    if chat_settings and chat_settings.max_tokens is not None:
+        max_tokens = chat_settings.max_tokens
+    elif project and project.max_tokens is not None:
+        max_tokens = project.max_tokens
+    elif global_settings:
+        max_tokens = global_settings.default_max_tokens
+    else:
+        max_tokens = _FALLBACK_MAX_TOKENS
+
+    # num_ctx cascade (Ollama context window). Not yet overridable per-chat/per-project;
+    # only the global setting and a hardcoded fallback apply.
+    if global_settings:
+        num_ctx = global_settings.num_ctx
+    else:
+        num_ctx = _FALLBACK_NUM_CTX
+
+    title_model = global_settings.conversation_summarization_model if global_settings else None
+
+    return _Cascade(
+        temperature=temperature,
+        max_tokens=max_tokens,
+        num_ctx=num_ctx,
+        title_model=title_model,
+    )
+
+
+async def _build_ollama_messages(
+    session: AsyncSession, chat: Chat, user_message_content: str
+) -> List[Dict[str, str]]:
+    """
+    Build the message list for Ollama: system prompt (project context + files) +
+    chat history + the new user message.
+    """
+    # Load chat history
+    history_query = (
+        select(Message)
+        .where(Message.chat_id == chat.id)
+        .order_by(Message.created_at.asc())
+    )
+    history = (await session.execute(history_query)).scalars().all()
+    ollama_messages: List[Dict[str, str]] = [
+        {"role": msg.role, "content": msg.content} for msg in history
+    ]
+
+    # Build system prompt
+    system_prompt_parts: List[str] = []
+
+    project: Optional[Project] = None
+    if chat.project_id:
+        project = (
+            await session.execute(select(Project).where(Project.id == chat.project_id))
+        ).scalar_one_or_none()
+
+    if project and project.custom_instructions:
+        system_prompt_parts.append("Project Context:")
+        system_prompt_parts.append(project.custom_instructions)
+        system_prompt_parts.append("")
+
+    # NOTE: Phase 1 preserves the "auto-attach all project files" behavior so this
+    # phase remains an isolated correctness fix. Selective per-message attachment
+    # lands in Phase 6 (PLAN_NEW.md).
+    if chat.project_id:
+        files_query = (
+            select(ProjectFile)
+            .where(ProjectFile.project_id == chat.project_id)
+            .order_by(ProjectFile.created_at.asc())
+        )
+        files = list((await session.execute(files_query)).scalars().all())
+
+        if files:
+            file_context_parts = []
+            for file in files:
+                filename = str(file.filename)
+                file_content = str(file.content) if file.content is not None else ""
+                file_context_parts.append(
+                    f"[File: {filename}]\n{file_content}\n[End of File]"
+                )
+            system_prompt_parts.append("Project Files:")
+            system_prompt_parts.append("\n\n".join(file_context_parts))
+            system_prompt_parts.append("")
+
+    if system_prompt_parts:
+        ollama_messages.insert(
+            0, {"role": "system", "content": "\n".join(system_prompt_parts)}
+        )
+
+    ollama_messages.append({"role": "user", "content": user_message_content})
+    return ollama_messages
+
+
+async def generate_and_update_title(chat_id: UUID, title_model: Optional[str]) -> None:
+    """
+    Generate a chat title from the first user/assistant exchange.
+
+    Designed to be fired with `asyncio.create_task` after the stream completes —
+    so it opens its own session and never touches the request-scoped session.
+    Implements retry logic: retries once on failure.
     """
     if not settings.enable_auto_title:
         logger.debug(f"Auto-title generation disabled, skipping for chat {chat_id}")
         return
 
     try:
-        # First, check if the chat already has a custom title (not "New Chat")
-        chat_query = select(Chat).where(Chat.id == chat_id)
-        result = await session.execute(chat_query)
-        chat = result.scalar_one_or_none()
+        async with AsyncSessionLocal() as session:
+            chat = (
+                await session.execute(select(Chat).where(Chat.id == chat_id))
+            ).scalar_one_or_none()
 
-        if not chat:
-            logger.warning(f"Chat {chat_id} not found")
-            return
+            if not chat:
+                logger.warning(f"Title-gen: chat {chat_id} not found")
+                return
 
-        # Skip title generation if chat already has a custom title
-        if chat.title != "New Chat":
-            logger.info(f"Chat {chat_id} already has custom title '{chat.title}', skipping generation")
-            return
+            if chat.title != "New Chat":
+                logger.info(
+                    f"Title-gen: chat {chat_id} already has custom title "
+                    f"'{chat.title}', skipping"
+                )
+                return
 
-        logger.info(f"Starting title generation for chat {chat_id}")
+            logger.info(f"Starting title generation for chat {chat_id}")
 
-        # Query first user message
-        user_messages_query = (
-            select(Message)
-            .where(Message.chat_id == chat_id, Message.role == "user")
-            .order_by(Message.created_at.asc())
-            .limit(1)
-        )
-        result = await session.execute(user_messages_query)
-        user_messages = result.scalars().all()
+            user_messages = (
+                (
+                    await session.execute(
+                        select(Message)
+                        .where(Message.chat_id == chat_id, Message.role == "user")
+                        .order_by(Message.created_at.asc())
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assistant_messages = (
+                (
+                    await session.execute(
+                        select(Message)
+                        .where(Message.chat_id == chat_id, Message.role == "assistant")
+                        .order_by(Message.created_at.asc())
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .all()
+            )
 
-        # Query first assistant message
-        assistant_messages_query = (
-            select(Message)
-            .where(Message.chat_id == chat_id, Message.role == "assistant")
-            .order_by(Message.created_at.asc())
-            .limit(1)
-        )
-        result = await session.execute(assistant_messages_query)
-        assistant_messages = result.scalars().all()
+            user_contents = [m.content for m in user_messages]
+            assistant_contents = [m.content for m in assistant_messages]
 
-        # Extract content into lists
-        user_contents = [msg.content for msg in user_messages]
-        assistant_contents = [msg.content for msg in assistant_messages]
+            if not user_contents or not assistant_contents:
+                logger.warning(
+                    f"Title-gen: insufficient messages in chat {chat_id}"
+                )
+                return
 
-        if not user_contents or not assistant_contents:
-            logger.warning(f"Insufficient messages for title generation in chat {chat_id}")
-            return
+            title: Optional[str] = None
+            max_attempts = 2
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    logger.info(
+                        f"Title generation attempt {attempt}/{max_attempts} for chat {chat_id}"
+                    )
+                    title = await ollama_service.generate_chat_title(
+                        user_contents,
+                        assistant_contents,
+                        model=title_model,
+                    )
+                    break
+                except Exception as e:
+                    logger.error(
+                        f"Title generation failed (attempt {attempt}/{max_attempts}): {e}"
+                    )
+                    if attempt < max_attempts:
+                        await asyncio.sleep(2)
+                    else:
+                        logger.error(
+                            f"Title generation gave up after {max_attempts} attempts; "
+                            f"keeping default title"
+                        )
+                        return
 
-        # Try generating title with retry logic
-        title = None
-        max_attempts = 2
-
-        for attempt in range(1, max_attempts + 1):
-            try:
-                logger.info(f"Title generation attempt {attempt}/{max_attempts} for chat {chat_id}")
-                title = await ollama_service.generate_chat_title(user_contents, assistant_contents)
-                break  # Success, exit retry loop
-            except Exception as e:
-                logger.error(f"Title generation failed (attempt {attempt}/{max_attempts}): {e}")
-                if attempt < max_attempts:
-                    # Wait 2 seconds before retry
-                    logger.info(f"Retrying title generation in 2 seconds...")
-                    await asyncio.sleep(2)
-                else:
-                    logger.error(f"Title generation failed after {max_attempts} attempts, keeping default title")
-                    return
-
-        # Update chat title in database
-        if title and title != "New Chat":
-            chat.title = title
-            await session.flush()
-            logger.info(f"Updated chat {chat_id} title to: '{title}'")
-        else:
-            logger.warning(f"Invalid title generated for chat {chat_id}, keeping default")
-
+            if title and title != "New Chat":
+                chat.title = title
+                await session.commit()
+                logger.info(f"Updated chat {chat_id} title to: '{title}'")
+            else:
+                logger.warning(
+                    f"Title-gen: invalid title for chat {chat_id}; keeping default"
+                )
     except Exception as e:
         logger.error(f"Unexpected error in generate_and_update_title for chat {chat_id}: {e}")
 
@@ -123,22 +277,10 @@ async def list_messages(
 ):
     """
     Get paginated list of messages for a chat.
-
-    Args:
-        page: Page number (1-indexed)
-        page_size: Number of items per page
-        chat: Chat from dependency
-        db: Database session
-
-    Returns:
-        MessageListResponse: Paginated list of messages
     """
-    # Get total count
     count_query = select(func.count()).where(Message.chat_id == chat.id)
-    result = await db.execute(count_query)
-    total = result.scalar() or 0
+    total = (await db.execute(count_query)).scalar() or 0
 
-    # Get paginated messages
     query = (
         select(Message)
         .where(Message.chat_id == chat.id)
@@ -146,8 +288,7 @@ async def list_messages(
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
-    result = await db.execute(query)
-    messages = result.scalars().all()
+    messages = (await db.execute(query)).scalars().all()
 
     total_pages = (total + page_size - 1) // page_size
 
@@ -169,16 +310,7 @@ async def create_message(
     """
     Create a new user message (does not trigger Ollama response).
     Use the /stream endpoint for interactive chat.
-
-    Args:
-        message_data: Message creation data
-        chat: Chat from dependency
-        db: Database session
-
-    Returns:
-        MessageResponse: Created message
     """
-    # Create user message
     new_message = Message(
         chat_id=chat.id,
         role="user",
@@ -193,268 +325,169 @@ async def create_message(
     return MessageResponse.model_validate(new_message)
 
 
+async def _prepare_stream(
+    chat_id: UUID, user_message: str
+) -> Tuple[Optional[Chat], Optional[_Cascade], Optional[List[Dict[str, str]]], Optional[str]]:
+    """
+    Open a setup session, load all cascade + history data, commit the user message.
+
+    The user message commit lives in its own transaction so it is preserved even
+    if the subsequent Ollama stream fails. Returns the chat, cascade, ollama
+    messages, and a snapshot of the chat model name. Returns (None, ...) when the
+    chat does not exist.
+    """
+    async with AsyncSessionLocal() as session:
+        chat = (
+            await session.execute(select(Chat).where(Chat.id == chat_id))
+        ).scalar_one_or_none()
+        if not chat:
+            return None, None, None, None
+
+        cascade = await _load_cascade(session, chat)
+        ollama_messages = await _build_ollama_messages(session, chat, user_message)
+
+        new_user_message = Message(
+            chat_id=chat_id,
+            role="user",
+            content=user_message,
+        )
+        session.add(new_user_message)
+        await session.commit()
+
+        model_name = chat.model
+
+    return chat, cascade, ollama_messages, model_name
+
+
+async def _persist_assistant_message(
+    chat_id: UUID, content: str, truncated: bool
+) -> int:
+    """
+    Save the assistant message in its own transaction and return the post-save
+    assistant message count for the chat (used to gate title generation).
+    """
+    async with AsyncSessionLocal() as session:
+        assistant_message = Message(
+            chat_id=chat_id,
+            role="assistant",
+            content=content,
+            truncated=truncated,
+        )
+        session.add(assistant_message)
+        await session.commit()
+
+        count = (
+            await session.execute(
+                select(func.count()).where(
+                    Message.chat_id == chat_id, Message.role == "assistant"
+                )
+            )
+        ).scalar() or 0
+        return count
+
+
 @router.get("/{chat_id}/stream")
 async def stream_chat_response(
     chat_id: UUID,
+    request: Request,
     message: str = Query(..., min_length=1, max_length=32000, description="User message"),
-    db: AsyncSession = Depends(get_db),
 ):
     """
     Send a message and stream the Ollama response in real-time.
 
-    For project chats, all project files are automatically included as context.
+    Note: this GET endpoint will be replaced by POST + fetch ReadableStream in
+    Phase 4 (PLAN_NEW.md). It is kept here only for backward compatibility with
+    the current frontend's EventSource client.
 
-    Args:
-        chat_id: Chat UUID
-        message: User message content
-        db: Database session
-
-    Returns:
-        StreamingResponse: Server-sent events stream
-
-    Raises:
-        HTTPException: If chat not found or Ollama error
+    Correctness guarantees (Phase 1):
+    - The user message is committed in its own transaction before invoking
+      Ollama, so it survives any later stream failure.
+    - On client disconnect or Ollama error, the partial assistant message is
+      persisted with `truncated=True`.
+    - Title generation runs as an asyncio task with its own session, so the
+      `done` signal is not blocked.
     """
-    import uuid as uuid_lib
-    request_id = str(uuid_lib.uuid4())[:8]  # Short request ID for tracking
-    logger.info(f"[Req {request_id}] Stream endpoint called for chat {chat_id}, message: '{message[:50]}...'")
+    request_id = str(uuid_lib.uuid4())[:8]
+    logger.info(
+        f"[Req {request_id}] Stream endpoint called for chat {chat_id}, "
+        f"message: '{message[:50]}...'"
+    )
 
-    async def event_generator():
-        session: AsyncSession = None
+    chat, cascade, ollama_messages, model_name = await _prepare_stream(chat_id, message)
+
+    async def event_generator() -> AsyncGenerator[bytes, None]:
+        if chat is None or cascade is None or ollama_messages is None or model_name is None:
+            yield _sse(json.dumps({"error": f"Chat {chat_id} not found"}))
+            return
+
+        full_response = ""
+        client_disconnected = False
+        stream_error: Optional[Dict[str, str]] = None
+
         try:
-            logger.info(f"[Req {request_id}] Starting event generator")
-            # Create new session for streaming
-            from app.db.session import AsyncSessionLocal
-
-            session = AsyncSessionLocal()
-
-            # Get chat and verify it exists
-            chat_query = select(Chat).where(Chat.id == chat_id)
-            result = await session.execute(chat_query)
-            chat = result.scalar_one_or_none()
-
-            if not chat:
-                error_data = json.dumps({"error": f"Chat {chat_id} not found"})
-                yield f"data: {error_data}\n\n"
-                return
-
-            # Get global settings
-            settings_query = select(Settings).where(Settings.id == 1)
-            result = await session.execute(settings_query)
-            global_settings = result.scalar_one_or_none()
-
-            # Get chat settings for temperature and max_tokens
-            chat_settings_query = select(ChatSettings).where(
-                ChatSettings.chat_id == chat_id
-            )
-            result = await session.execute(chat_settings_query)
-            chat_settings = result.scalar_one_or_none()
-
-            # Get project settings if chat belongs to a project (query executed later for custom_instructions)
-            project = None
-            if chat.project_id:
-                project_query = select(Project).where(Project.id == chat.project_id)
-                result = await session.execute(project_query)
-                project = result.scalar_one_or_none()
-
-            # Determine temperature: chat → project → global → hardcoded default
-            temperature = None
-            if chat_settings and chat_settings.temperature is not None:
-                temperature = chat_settings.temperature
-            elif project and project.temperature is not None:
-                temperature = project.temperature
-            elif global_settings:
-                temperature = global_settings.default_temperature
-            else:
-                temperature = 0.7
-
-            # Determine max_tokens: chat → project → global → hardcoded default
-            max_tokens = None
-            if chat_settings and chat_settings.max_tokens is not None:
-                max_tokens = chat_settings.max_tokens
-            elif project and project.max_tokens is not None:
-                max_tokens = project.max_tokens
-            elif global_settings:
-                max_tokens = global_settings.default_max_tokens
-            else:
-                max_tokens = 2048
-
-            # Get chat history
-            messages_query = (
-                select(Message)
-                .where(Message.chat_id == chat_id)
-                .order_by(Message.created_at.asc())
-            )
-            result = await session.execute(messages_query)
-            history = result.scalars().all()
-
-            # Build message history for Ollama
-            ollama_messages = [
-                {"role": msg.role, "content": msg.content} for msg in history
-            ]
-
-            # Build system prompt with project context
-            system_prompt_parts = []
-
-            # Add project context if project exists and has custom instructions
-            if project and project.custom_instructions:
-                system_prompt_parts.append("Project Context:")
-                system_prompt_parts.append(project.custom_instructions)
-                system_prompt_parts.append("")  # Empty line for spacing
-
-            # Automatically load ALL project files for project chats and add to system prompt
-            if chat.project_id:
-                logger.info(f"[Req {request_id}] Chat {chat_id} belongs to project {chat.project_id}, loading project files")
-                # Load all files from the project with explicit content loading
-                files_query = select(ProjectFile).where(
-                    ProjectFile.project_id == chat.project_id
-                ).order_by(ProjectFile.created_at.asc())
-
-                # Execute query and materialize results immediately
-                result = await session.execute(files_query)
-                files = list(result.scalars().all())
-
-                logger.info(f"Loaded {len(files)} files from database for project {chat.project_id}")
-
-                if files:
-                    logger.info(f"Auto-attaching {len(files)} project file(s) to chat {chat_id}")
-
-                    # Add all file contents to the system prompt
-                    # Access all file attributes now while session is active
-                    file_context_parts = []
-                    total_file_chars = 0
-                    for file in files:
-                        # Access all attributes immediately to avoid lazy loading issues
-                        filename = str(file.filename)
-                        file_type = str(file.file_type)
-                        file_content = str(file.content) if file.content is not None else ""
-                        total_file_chars += len(file_content)
+            async with aclosing(
+                ollama_service.stream_chat(
+                    model=model_name,
+                    messages=ollama_messages,
+                    temperature=cascade.temperature,
+                    max_tokens=cascade.max_tokens,
+                    num_ctx=cascade.num_ctx,
+                )
+            ) as stream:
+                async for chunk in stream:
+                    if await request.is_disconnected():
+                        client_disconnected = True
                         logger.info(
-                            f"Including file {filename} ({file_type}, {len(file_content)} chars) "
-                            f"as context for chat {chat_id}"
+                            f"[Req {request_id}] Client disconnected mid-stream; "
+                            f"breaking out of generator"
                         )
-                        file_context_parts.append(f"[File: {filename}]\n{file_content}\n[End of File]")
+                        break
 
-                    # Add file context to system prompt
-                    system_prompt_parts.append("Project Files:")
-                    system_prompt_parts.append("\n\n".join(file_context_parts))
-                    system_prompt_parts.append("")  # Empty line for spacing
-
-                    logger.info(
-                        f"Total context size: {total_file_chars} chars from {len(files)} files added to system prompt"
-                    )
-                else:
-                    logger.info(f"No files found in project {chat.project_id} for chat {chat_id}")
-
-            # Insert combined system prompt if we have any content
-            if system_prompt_parts:
-                combined_prompt = "\n".join(system_prompt_parts)
-                ollama_messages.insert(0, {"role": "system", "content": combined_prompt})
-
-                # Log the complete system prompt
-                logger.info("=" * 80)
-                logger.info("SYSTEM PROMPT:")
-                logger.info("=" * 80)
-                logger.info(combined_prompt)
-                logger.info("=" * 80)
-
-            # Add new user message (original message without file contents)
-            ollama_messages.append({"role": "user", "content": message})
-
-            # Log the full message content being sent to Ollama for debugging
-            logger.info(
-                f"Sending to Ollama - Chat {chat_id}, User message length: {len(message)} chars, "
-                f"Number of messages in history: {len(ollama_messages)}"
-            )
-
-            # Debug: Log all messages being sent to Ollama
-            logger.info("=" * 80)
-            logger.info("MESSAGES BEING SENT TO OLLAMA:")
-            logger.info("=" * 80)
-            for idx, msg in enumerate(ollama_messages):
-                logger.info(f"Message {idx + 1} - Role: {msg['role']}")
-                content = msg['content']
-                if len(content) > 1000:
-                    logger.info(f"Content (first 500 chars): {content[:500]}")
-                    logger.info(f"... [{len(content) - 1000} chars omitted] ...")
-                    logger.info(f"Content (last 500 chars): {content[-500:]}")
-                else:
-                    logger.info(f"Content: {content}")
-                logger.info("-" * 80)
-            logger.info("=" * 80)
-
-            # Save user message to database
-            user_message = Message(
-                chat_id=chat_id,
-                role="user",
-                content=message,  # Store original message without file contents
-            )
-            session.add(user_message)
-            await session.flush()
-
-            # Note: We don't need to associate files with the message in the database
-            # since all project files are automatically included as context.
-            # The message_files relationship is kept for potential future use
-            # (e.g., selective file attachment or file change tracking).
-
-            logger.info(f"Starting stream for chat {chat_id}")
-
-            # Stream response from Ollama
-            full_response = ""
-            async for chunk in ollama_service.stream_chat(
-                model=chat.model,
-                messages=ollama_messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            ):
-                full_response += chunk
-                chunk_data = json.dumps({"content": chunk, "done": False})
-                yield f"data: {chunk_data}\n\n"
-
-            # Save assistant message to database
-            assistant_message = Message(
-                chat_id=chat_id,
-                role="assistant",
-                content=full_response,
-            )
-            session.add(assistant_message)
-            await session.commit()
-
-            logger.info(f"Completed stream for chat {chat_id}")
-
-            # Check if this is the 1st assistant response and trigger title generation
-            message_count_query = select(func.count()).where(
-                Message.chat_id == chat_id,
-                Message.role == "assistant"
-            )
-            result = await session.execute(message_count_query)
-            assistant_count = result.scalar() or 0
-
-            if assistant_count == 1:
-                logger.info(f"First assistant response completed for chat {chat_id}, triggering title generation")
-                await generate_and_update_title(session, chat_id)
-                await session.commit()  # Commit title update
-
-            # Send completion signal
-            done_data = json.dumps({"content": "", "done": True})
-            yield f"data: {done_data}\n\n"
+                    full_response += chunk
+                    yield _sse(json.dumps({"content": chunk, "done": False}))
 
         except OllamaConnectionError as e:
-            logger.error(f"Ollama connection error: {e}")
-            error_data = json.dumps(
-                {
-                    "error": "Unable to connect to Ollama",
-                    "detail": "Please ensure Ollama is running",
-                }
-            )
-            yield f"data: {error_data}\n\n"
+            logger.error(f"[Req {request_id}] Ollama connection error: {e}")
+            stream_error = {
+                "error": "Unable to connect to Ollama",
+                "detail": "Please ensure Ollama is running",
+            }
         except Exception as e:
-            logger.error(f"Error in stream: {e}")
-            error_data = json.dumps({"error": "Internal server error", "detail": str(e)})
-            yield f"data: {error_data}\n\n"
-        finally:
-            if session:
-                await session.close()
+            logger.error(f"[Req {request_id}] Streaming error: {e}")
+            stream_error = {"error": "Internal server error", "detail": str(e)}
+
+        # Persist whatever the assistant produced, marking truncated when the
+        # stream did not complete cleanly. Use a fresh session — the setup
+        # session is already closed and the request-scoped one would close
+        # before the streaming response finishes.
+        is_truncated = client_disconnected or stream_error is not None
+        assistant_count = 0
+        try:
+            if full_response:
+                assistant_count = await _persist_assistant_message(
+                    chat_id, full_response, is_truncated
+                )
+                logger.info(
+                    f"[Req {request_id}] Persisted assistant message "
+                    f"(truncated={is_truncated})"
+                )
+        except Exception as e:
+            logger.error(
+                f"[Req {request_id}] Failed to persist assistant message: {e}"
+            )
+
+        # Emit final frame
+        if stream_error is not None:
+            yield _sse(json.dumps(stream_error))
+        else:
+            yield _sse(json.dumps({"content": "", "done": True}))
+
+        # First successful assistant turn → kick off title generation in the
+        # background so it never blocks the `done` signal above.
+        if assistant_count == 1 and not is_truncated:
+            asyncio.create_task(
+                generate_and_update_title(chat_id, cascade.title_model)
+            )
 
     return StreamingResponse(
         event_generator(),
@@ -465,3 +498,8 @@ async def stream_chat_response(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+def _sse(payload: str) -> bytes:
+    """Encode an SSE `data:` frame."""
+    return f"data: {payload}\n\n".encode("utf-8")

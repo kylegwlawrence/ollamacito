@@ -97,12 +97,34 @@ class OllamaService:
             logger.error(f"Error checking model existence: {e}")
             return False
 
+    @staticmethod
+    def _build_options(
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+        num_ctx: Optional[int],
+    ) -> Optional[Dict]:
+        """
+        Build an Ollama options dict from independent generation and context params.
+
+        max_tokens maps to Ollama's `num_predict` (max tokens to generate).
+        num_ctx maps to Ollama's `num_ctx` (context window size).
+        """
+        options: Dict = {}
+        if temperature is not None:
+            options["temperature"] = temperature
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
+        if num_ctx is not None:
+            options["num_ctx"] = num_ctx
+        return options or None
+
     async def chat(
         self,
         model: str,
         messages: List[Dict[str, str]],
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        num_ctx: Optional[int] = None,
     ) -> Dict:
         """
         Send a non-streaming chat request to Ollama.
@@ -111,7 +133,8 @@ class OllamaService:
             model: Model name to use
             messages: List of message dicts with 'role' and 'content'
             temperature: Sampling temperature (0.0-2.0)
-            max_tokens: Maximum tokens to generate
+            max_tokens: Max tokens to generate (Ollama option `num_predict`)
+            num_ctx: Context window size (Ollama option `num_ctx`)
 
         Returns:
             Dict: Response from Ollama
@@ -121,17 +144,13 @@ class OllamaService:
             OllamaModelNotFoundError: If model not found
         """
         try:
-            options = {}
-            if temperature is not None:
-                options["temperature"] = temperature
-            if max_tokens is not None:
-                options["num_ctx"] = max_tokens
+            options = self._build_options(temperature, max_tokens, num_ctx)
 
             logger.info(f"Sending chat request to model '{model}'")
             response = await self.client.chat(
                 model=model,
                 messages=messages,
-                options=options if options else None,
+                options=options,
                 stream=False,
             )
             logger.info(f"Received response from model '{model}'")
@@ -150,6 +169,7 @@ class OllamaService:
         messages: List[Dict[str, str]],
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        num_ctx: Optional[int] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Send a streaming chat request to Ollama.
@@ -158,7 +178,8 @@ class OllamaService:
             model: Model name to use
             messages: List of message dicts with 'role' and 'content'
             temperature: Sampling temperature (0.0-2.0)
-            max_tokens: Maximum tokens to generate
+            max_tokens: Max tokens to generate (Ollama option `num_predict`)
+            num_ctx: Context window size (Ollama option `num_ctx`)
 
         Yields:
             str: Content chunks from the streaming response
@@ -167,19 +188,15 @@ class OllamaService:
             OllamaConnectionError: If unable to connect
             OllamaModelNotFoundError: If model not found
         """
+        stream = None
         try:
-            options = {}
-            if temperature is not None:
-                options["temperature"] = temperature
-            if max_tokens is not None:
-                options["num_ctx"] = max_tokens
-
+            options = self._build_options(temperature, max_tokens, num_ctx)
             logger.info(f"Starting streaming chat with model '{model}'")
 
             stream = await self.client.chat(
                 model=model,
                 messages=messages,
-                options=options if options else None,
+                options=options,
                 stream=True,
             )
 
@@ -198,6 +215,14 @@ class OllamaService:
                 raise OllamaModelNotFoundError(model)
             logger.error(f"Error in streaming chat: {e}")
             raise OllamaConnectionError(self.base_url, str(e))
+        finally:
+            # Best-effort cleanup when the caller cancels mid-stream.
+            close = getattr(stream, "aclose", None)
+            if close is not None:
+                try:
+                    await close()
+                except Exception:
+                    pass
 
     def _load_title_prompt(self) -> str:
         """
@@ -226,14 +251,17 @@ class OllamaService:
         self,
         user_messages: List[str],
         assistant_messages: List[str],
+        model: Optional[str] = None,
     ) -> str:
         """
-        Generate a chat title using SummLlama3.2 model.
-        Dynamically loads prompt from make_chat_title_prompt.md file.
+        Generate a chat title with the given model (or the env-var fallback).
 
         Args:
             user_messages: List of user message contents (max 2)
             assistant_messages: List of assistant message contents (max 2)
+            model: Override the title-generation model. When None, falls back to
+                settings.title_generation_model (the env-var seed). Callers should
+                pass the DB-stored `Settings.conversation_summarization_model`.
 
         Returns:
             str: Generated title (3-5 words)
@@ -242,12 +270,14 @@ class OllamaService:
             OllamaConnectionError: If unable to connect
             OllamaModelNotFoundError: If model not found
         """
+        title_model = model or settings.title_generation_model
+
         try:
             # Load prompt from file
             system_prompt = self._load_title_prompt()
 
             # Build conversation context for title generation
-            messages = []
+            messages: List[Dict[str, str]] = []
 
             # Add system message with prompt
             messages.append({"role": "system", "content": system_prompt})
@@ -262,7 +292,7 @@ class OllamaService:
             # Ask for title generation
             messages.append({"role": "user", "content": "Generate a short title for this conversation."})
 
-            logger.info(f"Generating title using model '{settings.title_generation_model}'")
+            logger.info(f"Generating title using model '{title_model}'")
 
             # Call Ollama with title generation settings
             options = {
@@ -272,7 +302,7 @@ class OllamaService:
             }
 
             response = await self.client.chat(
-                model=settings.title_generation_model,
+                model=title_model,
                 messages=messages,
                 options=options,
                 stream=False,
@@ -298,8 +328,8 @@ class OllamaService:
         except Exception as e:
             error_str = str(e).lower()
             if "not found" in error_str or "does not exist" in error_str:
-                logger.error(f"Title generation model '{settings.title_generation_model}' not found")
-                raise OllamaModelNotFoundError(settings.title_generation_model)
+                logger.error(f"Title generation model '{title_model}' not found")
+                raise OllamaModelNotFoundError(title_model)
             logger.error(f"Error in title generation: {e}")
             raise OllamaConnectionError(self.base_url, str(e))
 
