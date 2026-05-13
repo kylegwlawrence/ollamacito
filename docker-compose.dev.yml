@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Dev overrides for `docker-compose.yml`. Applied via
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 # (`make dev`)
