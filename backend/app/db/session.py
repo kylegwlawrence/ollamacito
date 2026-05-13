@@ -1,8 +1,9 @@
 """
 Database session management with async SQLAlchemy.
-"""
-from typing import AsyncGenerator
 
+Note: the `get_db` request dependency lives in `app.api.deps`. This module
+only owns the engine and session factory.
+"""
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
@@ -24,21 +25,3 @@ AsyncSessionLocal = async_sessionmaker(
     autocommit=False,
     autoflush=False,
 )
-
-
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """
-    Dependency function to get database session.
-
-    Yields:
-        AsyncSession: Database session
-    """
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()

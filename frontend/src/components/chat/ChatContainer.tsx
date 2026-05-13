@@ -37,6 +37,11 @@ export const ChatContainer = () => {
     }
   }, [currentChat?.id])
 
+  // Get project files if chat belongs to a project
+  const projectFiles = currentChat?.project_id && currentProject?.id === currentChat.project_id
+    ? currentProject.files || []
+    : undefined
+
   const handleSend = (message: string) => {
     if (!currentChat) return
 
@@ -60,11 +65,6 @@ export const ChatContainer = () => {
     // Send to AI (files are automatically included on backend for project chats)
     streaming.sendMessage(currentChat.id, message)
   }
-
-  // Get project files if chat belongs to a project
-  const projectFiles = currentChat?.project_id && currentProject?.id === currentChat.project_id
-    ? currentProject.files || []
-    : undefined
 
   if (!currentChat) {
     return (

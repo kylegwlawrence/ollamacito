@@ -8,24 +8,28 @@ from sqlalchemy import CheckConstraint, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.config import settings as app_settings
 from app.db.base import Base, TimestampMixin
 
 
 class Settings(Base, TimestampMixin):
-    """Global settings model (single row)."""
+    """Global settings model (single row).
+
+    DB is the source of truth after first init. Env vars are seed-only;
+    the endpoint at `app/api/v1/endpoints/settings.py` reads env vars to
+    populate this row when it does not yet exist.
+    """
 
     __tablename__ = "settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     default_model: Mapped[str] = mapped_column(
         String(100),
-        default=lambda: app_settings.default_model,
+        server_default="qwen2.5-coder:14b",
         nullable=False,
     )
     conversation_summarization_model: Mapped[str] = mapped_column(
         String(100),
-        default=lambda: app_settings.title_generation_model,
+        server_default="mistral:7b",
         nullable=False,
     )
     default_temperature: Mapped[float] = mapped_column(

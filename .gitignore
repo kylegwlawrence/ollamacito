@@ -24,6 +24,12 @@ __pycache__/
 *.swo
 *~
 
+# OS
+.DS_Store
+**/.DS_Store
+Thumbs.db
+*.tmp
+
 # Logs
 *.log
 logs/
