@@ -16,6 +16,9 @@ export const ChatContainer = () => {
   const setCurrentChat = useChatStore((s) => s.setCurrentChat)
   const messages = useChatStore((s) => s.messages)
   const setMessages = useChatStore((s) => s.setMessages)
+  const selectedFileIds = useChatStore((s) => s.selectedFileIds)
+  const setSelectedFileIds = useChatStore((s) => s.setSelectedFileIds)
+  const toggleFileId = useChatStore((s) => s.toggleFileId)
   const currentProject = useProjectsStore((s) => s.currentProject)
 
   const streaming = useStreaming(() => {
@@ -51,23 +54,32 @@ export const ChatContainer = () => {
   }, [chatId])
 
   // Get project files if chat belongs to a project
-  const projectFiles = currentChat?.project_id && currentProject?.id === currentChat.project_id
-    ? currentProject.files || []
-    : undefined
+  const projectFiles =
+    currentChat?.project_id && currentProject?.id === currentChat.project_id
+      ? currentProject.files || []
+      : undefined
 
-  const handleSend = (message: string) => {
+  // Reset file selection when the chat (or its project) changes.
+  // Phase 6: if the project opts into auto-attach-all, pre-select every file.
+  useEffect(() => {
+    if (!projectFiles || projectFiles.length === 0) {
+      setSelectedFileIds([])
+      return
+    }
+    if (currentProject?.auto_attach_all_files) {
+      setSelectedFileIds(projectFiles.map((f) => f.id))
+    } else {
+      setSelectedFileIds([])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChat?.id, currentProject?.id, currentProject?.auto_attach_all_files])
+
+  const handleSend = (message: string, fileIds: string[]) => {
     if (!currentChat) return
-
-    console.log('[ChatContainer] Sending message:', {
-      chatId: currentChat.id,
-      projectId: currentChat.project_id,
-      hasProjectFiles: projectFiles && projectFiles.length > 0,
-      fileCount: projectFiles?.length || 0,
-    })
 
     // Add user message to the message list immediately
     const userMessage = {
-      id: `temp-${Date.now()}`, // Temporary ID, will be replaced when messages reload
+      id: `temp-${Date.now()}`,
       chat_id: currentChat.id,
       role: 'user' as const,
       content: message,
@@ -75,8 +87,7 @@ export const ChatContainer = () => {
     }
     setMessages([...messages, userMessage])
 
-    // Send to AI (files are automatically included on backend for project chats)
-    streaming.sendMessage(currentChat.id, message)
+    streaming.sendMessage(currentChat.id, message, fileIds)
   }
 
   if (!currentChat) {
@@ -126,6 +137,8 @@ export const ChatContainer = () => {
         isStreaming={streaming.isStreaming}
         onStop={streaming.cancelStream}
         projectFiles={projectFiles}
+        selectedFileIds={selectedFileIds}
+        onToggleFile={toggleFileId}
       />
     </main>
   )

@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { streamChat, type StreamFrame } from '@/services/streamApi'
 
 interface UseStreamingReturn {
-  sendMessage: (chatId: string, message: string) => Promise<void>
+  sendMessage: (
+    chatId: string,
+    message: string,
+    fileIds?: string[]
+  ) => Promise<void>
   isStreaming: boolean
   streamingContent: string
   error: string | null
@@ -57,7 +61,11 @@ export const useStreaming = (
   }, [])
 
   const sendMessage = useCallback(
-    async (chatId: string, message: string): Promise<void> => {
+    async (
+      chatId: string,
+      message: string,
+      fileIds?: string[]
+    ): Promise<void> => {
       // Reject concurrent invocations. The caller should disable the input.
       if (controllerRef.current) {
         setError('A message is already streaming.')
@@ -78,7 +86,7 @@ export const useStreaming = (
       try {
         for await (const frame of streamChat(
           chatId,
-          { content: message, file_ids: null },
+          { content: message, file_ids: fileIds ?? null },
           controller
         ) as AsyncGenerator<StreamFrame, void, void>) {
           if (frame.type === 'chunk') {

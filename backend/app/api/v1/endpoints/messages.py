@@ -110,11 +110,20 @@ async def _load_cascade(session: AsyncSession, chat: Chat) -> _Cascade:
 
 
 async def _build_ollama_messages(
-    session: AsyncSession, chat: Chat, user_message_content: str
+    session: AsyncSession,
+    chat: Chat,
+    user_message_content: str,
+    attached_files: List[ProjectFile],
 ) -> List[Dict[str, str]]:
     """
-    Build the message list for Ollama: system prompt (project context + files) +
-    chat history + the new user message.
+    Build the message list for Ollama: system prompt (project custom
+    instructions + ONLY the explicitly-attached project files) + chat
+    history + the new user message.
+
+    `attached_files` is the pre-resolved, pre-ownership-checked set of
+    project files the user selected for this turn. The caller is
+    responsible for verifying that each file belongs to the chat's
+    project (see `_resolve_attached_files`).
     """
     # Load chat history
     history_query = (
@@ -130,39 +139,26 @@ async def _build_ollama_messages(
     # Build system prompt
     system_prompt_parts: List[str] = []
 
-    project: Optional[Project] = None
     if chat.project_id:
         project = (
             await session.execute(select(Project).where(Project.id == chat.project_id))
         ).scalar_one_or_none()
-
-    if project and project.custom_instructions:
-        system_prompt_parts.append("Project Context:")
-        system_prompt_parts.append(project.custom_instructions)
-        system_prompt_parts.append("")
-
-    # NOTE: Phase 1 preserves the "auto-attach all project files" behavior so this
-    # phase remains an isolated correctness fix. Selective per-message attachment
-    # lands in Phase 6 (PLAN_NEW.md).
-    if chat.project_id:
-        files_query = (
-            select(ProjectFile)
-            .where(ProjectFile.project_id == chat.project_id)
-            .order_by(ProjectFile.created_at.asc())
-        )
-        files = list((await session.execute(files_query)).scalars().all())
-
-        if files:
-            file_context_parts = []
-            for file in files:
-                filename = str(file.filename)
-                file_content = str(file.content) if file.content is not None else ""
-                file_context_parts.append(
-                    f"[File: {filename}]\n{file_content}\n[End of File]"
-                )
-            system_prompt_parts.append("Project Files:")
-            system_prompt_parts.append("\n\n".join(file_context_parts))
+        if project and project.custom_instructions:
+            system_prompt_parts.append("Project Context:")
+            system_prompt_parts.append(project.custom_instructions)
             system_prompt_parts.append("")
+
+    if attached_files:
+        file_context_parts = []
+        for file in attached_files:
+            filename = str(file.filename)
+            file_content = str(file.content) if file.content is not None else ""
+            file_context_parts.append(
+                f"[File: {filename}]\n{file_content}\n[End of File]"
+            )
+        system_prompt_parts.append("Project Files:")
+        system_prompt_parts.append("\n\n".join(file_context_parts))
+        system_prompt_parts.append("")
 
     if system_prompt_parts:
         ollama_messages.insert(
@@ -171,6 +167,30 @@ async def _build_ollama_messages(
 
     ollama_messages.append({"role": "user", "content": user_message_content})
     return ollama_messages
+
+
+async def _resolve_attached_files(
+    session: AsyncSession, chat: Chat, file_ids: Optional[List[UUID]]
+) -> List[ProjectFile]:
+    """
+    Resolve the user's requested file_ids to ProjectFile rows.
+
+    Phase 6: no automatic fallback to all project files — the request is
+    the source of truth. Empty/None means no files. Cross-project IDs are
+    silently dropped (filtered by `ProjectFile.project_id == chat.project_id`)
+    so a request can't pull files from a project the chat doesn't belong to.
+    """
+    if not file_ids or chat.project_id is None:
+        return []
+    query = (
+        select(ProjectFile)
+        .where(
+            ProjectFile.id.in_(file_ids),
+            ProjectFile.project_id == chat.project_id,
+        )
+        .order_by(ProjectFile.created_at.asc())
+    )
+    return list((await session.execute(query)).scalars().all())
 
 
 async def generate_and_update_title(chat_id: UUID, title_model: Optional[str]) -> None:
@@ -334,15 +354,19 @@ async def create_message(
 
 
 async def _prepare_stream(
-    chat_id: UUID, user_id: UUID, user_message: str
+    chat_id: UUID,
+    user_id: UUID,
+    user_message: str,
+    file_ids: Optional[List[UUID]],
 ) -> Tuple[Optional[Chat], Optional[_Cascade], Optional[List[Dict[str, str]]], Optional[str]]:
     """
-    Open a setup session, load all cascade + history data, commit the user message.
+    Open a setup session, load cascade + history, resolve attached files,
+    persist the user message (and message_files junction rows) in one
+    transaction.
 
-    The user message commit lives in its own transaction so it is preserved even
-    if the subsequent Ollama stream fails. Returns the chat, cascade, ollama
-    messages, and a snapshot of the chat model name. Returns (None, ...) when the
-    chat does not exist or does not belong to the requesting user.
+    The user-message commit lives in its own transaction so it survives any
+    later Ollama stream failure. Returns (None, ...) when the chat does not
+    exist or does not belong to the requesting user.
     """
     async with AsyncSessionLocal() as session:
         chat = (
@@ -354,12 +378,16 @@ async def _prepare_stream(
             return None, None, None, None
 
         cascade = await _load_cascade(session, chat)
-        ollama_messages = await _build_ollama_messages(session, chat, user_message)
+        attached_files = await _resolve_attached_files(session, chat, file_ids)
+        ollama_messages = await _build_ollama_messages(
+            session, chat, user_message, attached_files
+        )
 
         new_user_message = Message(
             chat_id=chat_id,
             role="user",
             content=user_message,
+            attached_files=attached_files,  # populates message_files junction
         )
         session.add(new_user_message)
         await session.commit()
@@ -421,9 +449,11 @@ async def stream_chat_response(
     - Title generation runs as an asyncio task with its own session, so the
       `done` frame is not blocked.
 
-    `body.file_ids` is a hook for Phase 6 selective per-message file
-    attachment. It is currently accepted but ignored — every project chat
-    auto-attaches all files (unchanged behavior).
+    `body.file_ids` selects which project files to include in the system
+    prompt for this turn (Phase 6). Empty/None = no files. Cross-project
+    IDs are silently dropped. Selections are persisted to the
+    `message_files` junction so the UI can show which files were attached
+    to past messages.
     """
     request_id = str(uuid_lib.uuid4())[:8]
     logger.info(
@@ -432,7 +462,7 @@ async def stream_chat_response(
     )
 
     chat, cascade, ollama_messages, model_name = await _prepare_stream(
-        chat_id, current_user.id, body.content
+        chat_id, current_user.id, body.content, body.file_ids
     )
 
     async def event_generator() -> AsyncGenerator[bytes, None]:

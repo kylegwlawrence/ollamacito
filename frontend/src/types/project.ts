@@ -10,6 +10,7 @@ export interface Project {
   default_model?: string | null
   temperature?: number | null
   max_tokens?: number | null
+  auto_attach_all_files: boolean
   created_at: string
   updated_at: string
 }
@@ -56,6 +57,7 @@ export interface ProjectUpdate {
   default_model?: string
   temperature?: number
   max_tokens?: number
+  auto_attach_all_files?: boolean
 }
 
 export interface ProjectListResponse {

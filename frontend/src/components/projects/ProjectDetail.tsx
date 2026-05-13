@@ -40,6 +40,7 @@ export const ProjectDetail = () => {
   const [editedDefaultModel, setEditedDefaultModel] = useState('')
   const [editedTemperature, setEditedTemperature] = useState('')
   const [editedMaxTokens, setEditedMaxTokens] = useState('')
+  const [editedAutoAttachAllFiles, setEditedAutoAttachAllFiles] = useState(false)
   const [hasSettingsChanges, setHasSettingsChanges] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
 
@@ -66,6 +67,7 @@ export const ProjectDetail = () => {
       setEditedDefaultModel(currentProject.default_model || '')
       setEditedTemperature(currentProject.temperature?.toString() || '')
       setEditedMaxTokens(currentProject.max_tokens?.toString() || '')
+      setEditedAutoAttachAllFiles(currentProject.auto_attach_all_files)
     }
   }, [currentProject])
 
@@ -77,9 +79,20 @@ export const ProjectDetail = () => {
       const modelChanged = editedDefaultModel !== (currentProject.default_model || '')
       const tempChanged = editedTemperature !== (currentProject.temperature?.toString() || '')
       const tokensChanged = editedMaxTokens !== (currentProject.max_tokens?.toString() || '')
-      setHasSettingsChanges(nameChanged || instructionsChanged || modelChanged || tempChanged || tokensChanged)
+      const autoAttachChanged = editedAutoAttachAllFiles !== currentProject.auto_attach_all_files
+      setHasSettingsChanges(
+        nameChanged || instructionsChanged || modelChanged || tempChanged || tokensChanged || autoAttachChanged
+      )
     }
-  }, [editedName, editedInstructions, editedDefaultModel, editedTemperature, editedMaxTokens, currentProject])
+  }, [
+    editedName,
+    editedInstructions,
+    editedDefaultModel,
+    editedTemperature,
+    editedMaxTokens,
+    editedAutoAttachAllFiles,
+    currentProject,
+  ])
 
   const loadProjectData = async () => {
     if (!currentProjectId) return
@@ -177,6 +190,7 @@ export const ProjectDetail = () => {
         default_model: editedDefaultModel.trim() || undefined,
         temperature: editedTemperature ? parseFloat(editedTemperature) : undefined,
         max_tokens: editedMaxTokens ? parseInt(editedMaxTokens, 10) : undefined,
+        auto_attach_all_files: editedAutoAttachAllFiles,
       })
 
       if (updated) {
@@ -202,6 +216,7 @@ export const ProjectDetail = () => {
       setEditedDefaultModel(currentProject.default_model || '')
       setEditedTemperature(currentProject.temperature?.toString() || '')
       setEditedMaxTokens(currentProject.max_tokens?.toString() || '')
+      setEditedAutoAttachAllFiles(currentProject.auto_attach_all_files)
       setHasSettingsChanges(false)
     }
   }
@@ -358,6 +373,23 @@ export const ProjectDetail = () => {
                     Maximum context window size
                   </span>
                 </div>
+              </div>
+
+              {/* Auto-attach all files (Phase 6 UX hint) */}
+              <div className="project-detail__field">
+                <label className="project-detail__label" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={editedAutoAttachAllFiles}
+                    onChange={(e) => setEditedAutoAttachAllFiles(e.target.checked)}
+                  />
+                  Auto-attach all project files to new messages
+                </label>
+                <span className="project-detail__hint">
+                  When on, every new message in this project pre-selects all
+                  files in the attach picker. You can still deselect any of
+                  them before sending.
+                </span>
               </div>
             </div>
 

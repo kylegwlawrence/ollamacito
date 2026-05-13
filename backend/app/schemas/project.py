@@ -24,6 +24,14 @@ class ProjectBase(BaseModel):
     max_tokens: Optional[int] = Field(
         None, gt=0, description="Max tokens override for this project"
     )
+    auto_attach_all_files: bool = Field(
+        default=False,
+        description=(
+            "If true, the frontend pre-selects every project file when "
+            "composing a new message. The backend always honors the explicit "
+            "file_ids on each request; this flag is a UX hint only."
+        ),
+    )
 
 
 class ProjectCreate(ProjectBase):
@@ -41,6 +49,7 @@ class ProjectUpdate(BaseModel):
     default_model: Optional[str] = Field(None, min_length=1, max_length=100)
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(None, gt=0)
+    auto_attach_all_files: Optional[bool] = None
 
 
 class ProjectFileResponse(BaseModel):

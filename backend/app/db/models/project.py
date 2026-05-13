@@ -36,6 +36,15 @@ class Project(Base, TimestampMixin):
     temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     max_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
+    # When true, the frontend pre-selects every project file on each new
+    # message (user can still deselect). When false (default), the user
+    # opts in per message via the file chip selector. The backend always
+    # honors the explicit `file_ids` from the request; this flag is a UX
+    # hint only.
+    auto_attach_all_files: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="projects")
     chats: Mapped[List["Chat"]] = relationship(
