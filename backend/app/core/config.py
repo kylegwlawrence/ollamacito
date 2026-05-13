@@ -57,6 +57,15 @@ class Settings(BaseSettings):
         "Default true for dev; set false in production where migrations "
         "should be run as a deliberate step before deploy.",
     )
+
+    # Auth Settings
+    auth_enabled: bool = Field(
+        default=False,
+        description="When false, every request resolves to the seeded "
+        "default user (single-user behavior). When true (Phase 7+), "
+        "`get_current_user` validates a JWT cookie. Cannot be flipped to "
+        "true until Phase 7 wires the login flow.",
+    )
     title_generation_prompt_file: str = Field(
         default="app/prompts/chat_title_generation.md",
         description="Path to prompt file for title generation (relative to backend directory)",

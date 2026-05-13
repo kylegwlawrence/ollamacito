@@ -1,14 +1,16 @@
 """
 API endpoints for settings management.
 """
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_chat_or_404, get_db
+from app.api.deps import get_chat_or_404, get_current_user, get_db
 from app.core.config import settings as app_settings
 from app.core.logging import get_logger
-from app.db.models import Chat, ChatSettings, Settings
+from app.db.models import Chat, ChatSettings, Settings, User
 from app.schemas.settings import (
     ChatSettingsResponse,
     ChatSettingsUpdate,
@@ -22,29 +24,23 @@ logger = get_logger(__name__)
 
 @router.get("/settings", response_model=SettingsResponse)
 async def get_global_settings(
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """
-    Get global application settings.
-
-    Args:
-        db: Database session
-
-    Returns:
-        SettingsResponse: Global settings
-
-    Raises:
-        HTTPException: If settings not found
+    Get the current user's settings. Creates a row from env-var seed defaults
+    if the user does not have one yet.
     """
     try:
-        query = select(Settings).where(Settings.id == 1)
-        result = await db.execute(query)
-        settings = result.scalar_one_or_none()
+        settings = (
+            await db.execute(
+                select(Settings).where(Settings.user_id == current_user.id)
+            )
+        ).scalar_one_or_none()
 
         if not settings:
-            # Create default settings if not exists, using config.py as source of truth
             settings = Settings(
-                id=1,
+                user_id=current_user.id,
                 default_model=app_settings.default_model,
                 conversation_summarization_model=app_settings.title_generation_model,
                 default_temperature=0.7,
@@ -54,7 +50,10 @@ async def get_global_settings(
             db.add(settings)
             await db.flush()
             await db.refresh(settings)
-            logger.info(f"Created default settings with model: {app_settings.default_model}")
+            logger.info(
+                f"Created default settings for user {current_user.id} "
+                f"with model: {app_settings.default_model}"
+            )
 
         return SettingsResponse.model_validate(settings)
 
@@ -69,26 +68,20 @@ async def get_global_settings(
 @router.patch("/settings", response_model=SettingsResponse)
 async def update_global_settings(
     settings_data: SettingsUpdate,
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """
-    Update global application settings.
-
-    Args:
-        settings_data: Settings update data
-        db: Database session
-
-    Returns:
-        SettingsResponse: Updated settings
-    """
+    """Update the current user's settings."""
     try:
-        query = select(Settings).where(Settings.id == 1)
-        result = await db.execute(query)
-        settings = result.scalar_one_or_none()
+        settings = (
+            await db.execute(
+                select(Settings).where(Settings.user_id == current_user.id)
+            )
+        ).scalar_one_or_none()
 
         if not settings:
             settings = Settings(
-                id=1,
+                user_id=current_user.id,
                 default_model=app_settings.default_model,
                 conversation_summarization_model=app_settings.title_generation_model,
                 default_temperature=0.7,
@@ -97,7 +90,6 @@ async def update_global_settings(
             )
             db.add(settings)
 
-        # Update fields
         if settings_data.default_model is not None:
             settings.default_model = settings_data.default_model
         if settings_data.conversation_summarization_model is not None:
@@ -112,7 +104,7 @@ async def update_global_settings(
         await db.flush()
         await db.refresh(settings)
 
-        logger.info("Updated global settings")
+        logger.info(f"Updated settings for user {current_user.id}")
 
         return SettingsResponse.model_validate(settings)
 
@@ -126,26 +118,14 @@ async def update_global_settings(
 
 @router.get("/{chat_id}/settings", response_model=ChatSettingsResponse)
 async def get_chat_settings(
-    chat: Chat = Depends(get_chat_or_404),
-    db: AsyncSession = Depends(get_db),
+    chat: Annotated[Chat, Depends(get_chat_or_404)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """
-    Get settings for a specific chat.
-
-    Args:
-        chat: Chat from dependency
-        db: Database session
-
-    Returns:
-        ChatSettingsResponse: Chat-specific settings
-    """
-    # Get or create chat settings
+    """Get settings for a specific chat (ownership enforced by dep)."""
     settings_query = select(ChatSettings).where(ChatSettings.chat_id == chat.id)
-    result = await db.execute(settings_query)
-    chat_settings = result.scalar_one_or_none()
+    chat_settings = (await db.execute(settings_query)).scalar_one_or_none()
 
     if not chat_settings:
-        # Return empty chat settings
         chat_settings = ChatSettings(chat_id=chat.id)
         db.add(chat_settings)
         await db.flush()
@@ -158,30 +138,17 @@ async def get_chat_settings(
 @router.patch("/{chat_id}/settings", response_model=ChatSettingsResponse)
 async def update_chat_settings(
     settings_data: ChatSettingsUpdate,
-    chat: Chat = Depends(get_chat_or_404),
-    db: AsyncSession = Depends(get_db),
+    chat: Annotated[Chat, Depends(get_chat_or_404)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """
-    Update settings for a specific chat.
-
-    Args:
-        settings_data: Chat settings update data
-        chat: Chat from dependency
-        db: Database session
-
-    Returns:
-        ChatSettingsResponse: Updated chat settings
-    """
-    # Get or create chat settings
+    """Update settings for a specific chat (ownership enforced by dep)."""
     settings_query = select(ChatSettings).where(ChatSettings.chat_id == chat.id)
-    result = await db.execute(settings_query)
-    chat_settings = result.scalar_one_or_none()
+    chat_settings = (await db.execute(settings_query)).scalar_one_or_none()
 
     if not chat_settings:
         chat_settings = ChatSettings(chat_id=chat.id)
         db.add(chat_settings)
 
-    # Update fields
     if settings_data.temperature is not None:
         chat_settings.temperature = settings_data.temperature
     if settings_data.max_tokens is not None:

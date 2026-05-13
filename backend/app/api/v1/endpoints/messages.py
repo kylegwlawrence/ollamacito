@@ -9,15 +9,15 @@ from dataclasses import dataclass
 from typing import AsyncGenerator, Dict, List, Optional, Tuple
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_chat_or_404, get_db
+from app.api.deps import get_chat_or_404, get_current_user, get_db
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.db.models import Chat, ChatSettings, Message, Project, ProjectFile, Settings
+from app.db.models import Chat, ChatSettings, Message, Project, ProjectFile, Settings, User
 from app.db.session import AsyncSessionLocal
 from app.schemas.message import MessageCreate, MessageListResponse, MessageResponse
 from app.services.ollama_service import ollama_service
@@ -46,10 +46,13 @@ class _Cascade:
 async def _load_cascade(session: AsyncSession, chat: Chat) -> _Cascade:
     """
     Resolve temperature, max_tokens, num_ctx from chat → project → global → defaults.
-    Also returns the title-generation model from the Settings row when present.
+    Global settings are keyed by the chat's owning user. Also returns the
+    title-generation model from the Settings row when present.
     """
     global_settings = (
-        await session.execute(select(Settings).where(Settings.id == 1))
+        await session.execute(
+            select(Settings).where(Settings.user_id == chat.user_id)
+        )
     ).scalar_one_or_none()
 
     chat_settings = (
@@ -326,7 +329,7 @@ async def create_message(
 
 
 async def _prepare_stream(
-    chat_id: UUID, user_message: str
+    chat_id: UUID, user_id: UUID, user_message: str
 ) -> Tuple[Optional[Chat], Optional[_Cascade], Optional[List[Dict[str, str]]], Optional[str]]:
     """
     Open a setup session, load all cascade + history data, commit the user message.
@@ -334,11 +337,13 @@ async def _prepare_stream(
     The user message commit lives in its own transaction so it is preserved even
     if the subsequent Ollama stream fails. Returns the chat, cascade, ollama
     messages, and a snapshot of the chat model name. Returns (None, ...) when the
-    chat does not exist.
+    chat does not exist or does not belong to the requesting user.
     """
     async with AsyncSessionLocal() as session:
         chat = (
-            await session.execute(select(Chat).where(Chat.id == chat_id))
+            await session.execute(
+                select(Chat).where(Chat.id == chat_id, Chat.user_id == user_id)
+            )
         ).scalar_one_or_none()
         if not chat:
             return None, None, None, None
@@ -390,6 +395,7 @@ async def _persist_assistant_message(
 async def stream_chat_response(
     chat_id: UUID,
     request: Request,
+    current_user: User = Depends(get_current_user),
     message: str = Query(..., min_length=1, max_length=32000, description="User message"),
 ):
     """
@@ -413,7 +419,9 @@ async def stream_chat_response(
         f"message: '{message[:50]}...'"
     )
 
-    chat, cascade, ollama_messages, model_name = await _prepare_stream(chat_id, message)
+    chat, cascade, ollama_messages, model_name = await _prepare_stream(
+        chat_id, current_user.id, message
+    )
 
     async def event_generator() -> AsyncGenerator[bytes, None]:
         if chat is None or cascade is None or ollama_messages is None or model_name is None:

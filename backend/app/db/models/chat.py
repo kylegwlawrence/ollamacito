@@ -30,6 +30,12 @@ class Chat(Base, TimestampMixin):
         primary_key=True,
         default=uuid.uuid4,
     )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -40,6 +46,7 @@ class Chat(Base, TimestampMixin):
     )
 
     # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="chats")
     messages: Mapped[List["Message"]] = relationship(
         "Message",
         back_populates="chat",

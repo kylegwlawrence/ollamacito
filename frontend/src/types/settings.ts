@@ -1,5 +1,5 @@
 export interface Settings {
-  id: number
+  user_id: string
   default_model: string
   conversation_summarization_model: string
   default_temperature: number

@@ -19,7 +19,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import delete
 
-from app.db.models import Chat
+from app.db.models import DEFAULT_USER_ID, Chat
 from app.db.session import AsyncSessionLocal
 from app.main import app
 from app.services import ollama_service as ollama_module
@@ -50,10 +50,15 @@ async def async_client() -> AsyncGenerator[httpx.AsyncClient, None]:
 
 @pytest_asyncio.fixture
 async def test_chat() -> AsyncGenerator[Chat, None]:
-    """Create a Chat row for a test; cascade-delete it on teardown."""
+    """Create a Chat row owned by the default user; cascade-delete on teardown."""
     chat_id = uuid4()
     async with AsyncSessionLocal() as session:
-        chat = Chat(id=chat_id, title="New Chat", model="test-model:1b")
+        chat = Chat(
+            id=chat_id,
+            user_id=DEFAULT_USER_ID,
+            title="New Chat",
+            model="test-model:1b",
+        )
         session.add(chat)
         await session.commit()
         await session.refresh(chat)

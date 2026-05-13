@@ -4,10 +4,10 @@ import { getErrorMessage } from '@/utils/errorHandler'
 import type { Settings } from '@/types'
 
 // Default settings to use while loading
-// The default_model will be fetched from backend (which reads from .env)
+// The real values are fetched from backend (seeded from env on first init).
 const DEFAULT_SETTINGS: Settings = {
-  id: 1,
-  default_model: '', // Will be loaded from backend
+  user_id: '',
+  default_model: '',
   conversation_summarization_model: '',
   default_temperature: 0.7,
   default_max_tokens: 2048,

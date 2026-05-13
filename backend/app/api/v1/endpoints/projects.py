@@ -1,14 +1,16 @@
 """
 API endpoints for project management.
 """
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_db, get_project_or_404
+from app.api.deps import get_current_user, get_db, get_project_or_404
 from app.core.logging import get_logger
-from app.db.models import Chat, Project, ProjectFile
+from app.db.models import Chat, Project, ProjectFile, User
 from app.schemas.chat import ChatListResponse, ChatResponse
 from app.schemas.project import (
     ProjectCreate,
@@ -26,28 +28,18 @@ logger = get_logger(__name__)
 
 @router.get("", response_model=ProjectListResponse)
 async def list_projects(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     include_archived: bool = Query(False, description="Include archived projects"),
-    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get paginated list of projects.
-
-    Args:
-        page: Page number (1-indexed)
-        page_size: Number of items per page
-        include_archived: Include archived projects in results
-        db: Database session
-
-    Returns:
-        ProjectListResponse: Paginated list of projects
-    """
+    """Get paginated list of projects for the current user."""
     try:
         # Build query
-        query = select(Project)
+        query = select(Project).where(Project.user_id == current_user.id)
         if not include_archived:
-            query = query.where(Project.is_archived == False)
+            query = query.where(Project.is_archived == False)  # noqa: E712
 
         # Get total count
         count_query = select(func.count()).select_from(query.subquery())
@@ -140,20 +132,13 @@ async def get_project(
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(
     project_data: ProjectCreate,
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """
-    Create a new project.
-
-    Args:
-        project_data: Project creation data
-        db: Database session
-
-    Returns:
-        ProjectResponse: Created project
-    """
+    """Create a new project owned by the current user."""
     try:
         new_project = Project(
+            user_id=current_user.id,
             name=project_data.name,
             custom_instructions=project_data.custom_instructions,
             default_model=project_data.default_model,

@@ -31,7 +31,7 @@ class SettingsUpdate(BaseModel):
 class SettingsResponse(SettingsBase):
     """Schema for settings response."""
 
-    id: int
+    user_id: UUID
     created_at: datetime
     updated_at: datetime
 

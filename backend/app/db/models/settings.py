@@ -2,7 +2,7 @@
 Database models for application and chat settings.
 """
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import CheckConstraint, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -10,18 +10,27 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
 
+if TYPE_CHECKING:
+    from app.db.models.user import User
+
 
 class Settings(Base, TimestampMixin):
-    """Global settings model (single row).
+    """Per-user settings (one row per user, keyed by user_id).
 
-    DB is the source of truth after first init. Env vars are seed-only;
-    the endpoint at `app/api/v1/endpoints/settings.py` reads env vars to
-    populate this row when it does not yet exist.
+    The DB row is the source of truth after first init. Env vars are
+    seed-only; the FastAPI lifespan creates a Settings row for the seeded
+    default user on first boot. The frontend reads/writes via
+    GET/PATCH /api/v1/settings, which resolves to the current user.
     """
 
     __tablename__ = "settings"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
     default_model: Mapped[str] = mapped_column(
         String(100),
         server_default="qwen2.5-coder:14b",
@@ -48,8 +57,10 @@ class Settings(Base, TimestampMixin):
         nullable=False,
     )
 
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="settings")
+
     __table_args__ = (
-        CheckConstraint("id = 1", name="single_row_constraint"),
         CheckConstraint(
             "default_temperature >= 0.0 AND default_temperature <= 2.0",
             name="valid_temperature",
@@ -60,7 +71,7 @@ class Settings(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return (
-            f"<Settings(model={self.default_model}, "
+            f"<Settings(user_id={self.user_id}, model={self.default_model}, "
             f"temp={self.default_temperature})>"
         )
 

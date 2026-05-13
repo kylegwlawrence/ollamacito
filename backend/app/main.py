@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
+from app.db.models import DEFAULT_USER_EMAIL, DEFAULT_USER_ID, User
 from app.db.models import Settings as DBSettings
 from app.db.session import AsyncSessionLocal
 from app.services.ollama_service import ollama_service
@@ -42,30 +43,48 @@ def _run_alembic_upgrade() -> None:
     command.upgrade(cfg, "head")
 
 
-async def _seed_settings_row() -> None:
+async def _seed_default_user_and_settings() -> None:
     """
-    Insert the single Settings row if missing. Env vars seed the values at
-    install time; subsequent edits via the UI persist to the DB and are
-    canonical.
+    Defensively ensure the default user exists and has a Settings row.
+
+    The Phase 3 migration also seeds the default user, but doing it here too
+    means a fresh dev DB that was created another way (e.g. unit tests) still
+    gets a usable single-user setup. Both operations are idempotent.
     """
     async with AsyncSessionLocal() as session:
-        existing = (
-            await session.execute(select(DBSettings).where(DBSettings.id == 1))
+        existing_user = (
+            await session.execute(select(User).where(User.id == DEFAULT_USER_ID))
         ).scalar_one_or_none()
-        if existing is not None:
-            return
-        session.add(
-            DBSettings(
-                id=1,
-                default_model=settings.default_model,
-                conversation_summarization_model=settings.title_generation_model,
-                default_temperature=0.7,
-                default_max_tokens=2048,
-                num_ctx=2048,
+        if existing_user is None:
+            session.add(
+                User(
+                    id=DEFAULT_USER_ID,
+                    email=DEFAULT_USER_EMAIL,
+                    is_active=True,
+                )
             )
-        )
+            await session.flush()
+            logger.info("✓ Seeded default User row")
+
+        existing_settings = (
+            await session.execute(
+                select(DBSettings).where(DBSettings.user_id == DEFAULT_USER_ID)
+            )
+        ).scalar_one_or_none()
+        if existing_settings is None:
+            session.add(
+                DBSettings(
+                    user_id=DEFAULT_USER_ID,
+                    default_model=settings.default_model,
+                    conversation_summarization_model=settings.title_generation_model,
+                    default_temperature=0.7,
+                    default_max_tokens=2048,
+                    num_ctx=2048,
+                )
+            )
+            logger.info("✓ Seeded default user's Settings row")
+
         await session.commit()
-        logger.info("✓ Seeded initial Settings row")
 
 
 @asynccontextmanager
@@ -92,12 +111,12 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Skipping migrations on startup (RUN_MIGRATIONS_ON_STARTUP=false)")
 
-    # Seed the global Settings row from env-var defaults if it does not yet
-    # exist. After this, the DB row is canonical.
+    # Seed the default user + their Settings row from env-var defaults if
+    # missing. After this, the DB row is canonical.
     try:
-        await _seed_settings_row()
+        await _seed_default_user_and_settings()
     except Exception as e:
-        logger.error(f"✗ Failed to seed Settings row: {e}")
+        logger.error(f"✗ Failed to seed default user / Settings: {e}")
         raise
 
     # Check Ollama connection

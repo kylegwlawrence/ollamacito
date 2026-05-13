@@ -21,6 +21,12 @@ class Project(Base, TimestampMixin):
         primary_key=True,
         default=uuid.uuid4,
     )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     custom_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -31,6 +37,7 @@ class Project(Base, TimestampMixin):
     max_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="projects")
     chats: Mapped[List["Chat"]] = relationship(
         "Chat",
         back_populates="project",
