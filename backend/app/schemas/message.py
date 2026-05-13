@@ -59,3 +59,19 @@ class StreamChunk(BaseModel):
 
     content: str
     done: bool = False
+
+
+class StreamMessageRequest(BaseModel):
+    """Body for POST /chats/{id}/stream.
+
+    `file_ids` is a hook for Phase 6 selective per-message attachment.
+    When None (Phase 4 default), all project files are attached (preserving
+    pre-Phase-6 behavior). When the list is present, Phase 6 will treat it
+    as the source of truth.
+    """
+
+    content: str = Field(..., min_length=1, max_length=32000)
+    file_ids: Optional[List[UUID]] = Field(
+        default=None,
+        description="Selected file IDs to attach. None = auto-attach all (until phase 6).",
+    )

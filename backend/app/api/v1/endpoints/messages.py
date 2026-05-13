@@ -19,7 +19,12 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models import Chat, ChatSettings, Message, Project, ProjectFile, Settings, User
 from app.db.session import AsyncSessionLocal
-from app.schemas.message import MessageCreate, MessageListResponse, MessageResponse
+from app.schemas.message import (
+    MessageCreate,
+    MessageListResponse,
+    MessageResponse,
+    StreamMessageRequest,
+)
 from app.services.ollama_service import ollama_service
 from app.utils.exceptions import OllamaConnectionError
 
@@ -391,46 +396,53 @@ async def _persist_assistant_message(
         return count
 
 
-@router.get("/{chat_id}/stream")
+@router.post("/{chat_id}/stream")
 async def stream_chat_response(
     chat_id: UUID,
+    body: StreamMessageRequest,
     request: Request,
     current_user: User = Depends(get_current_user),
-    message: str = Query(..., min_length=1, max_length=32000, description="User message"),
 ):
     """
     Send a message and stream the Ollama response in real-time.
 
-    Note: this GET endpoint will be replaced by POST + fetch ReadableStream in
-    Phase 4 (PLAN_NEW.md). It is kept here only for backward compatibility with
-    the current frontend's EventSource client.
+    Transport (Phase 4): POST with a JSON body, response is NDJSON — one JSON
+    object per line. Frame types:
 
-    Correctness guarantees (Phase 1):
+    - `{"type": "chunk", "content": "..."}` — a token-or-fragment from Ollama
+    - `{"type": "done", "truncated": false}` — successful end of stream
+    - `{"type": "error", "message": "..."}` — terminal error; no more frames
+
+    Correctness guarantees:
     - The user message is committed in its own transaction before invoking
       Ollama, so it survives any later stream failure.
     - On client disconnect or Ollama error, the partial assistant message is
-      persisted with `truncated=True`.
+      persisted with `truncated=True` and surfaced in the `done` frame.
     - Title generation runs as an asyncio task with its own session, so the
-      `done` signal is not blocked.
+      `done` frame is not blocked.
+
+    `body.file_ids` is a hook for Phase 6 selective per-message file
+    attachment. It is currently accepted but ignored — every project chat
+    auto-attaches all files (unchanged behavior).
     """
     request_id = str(uuid_lib.uuid4())[:8]
     logger.info(
         f"[Req {request_id}] Stream endpoint called for chat {chat_id}, "
-        f"message: '{message[:50]}...'"
+        f"message: '{body.content[:50]}...'"
     )
 
     chat, cascade, ollama_messages, model_name = await _prepare_stream(
-        chat_id, current_user.id, message
+        chat_id, current_user.id, body.content
     )
 
     async def event_generator() -> AsyncGenerator[bytes, None]:
         if chat is None or cascade is None or ollama_messages is None or model_name is None:
-            yield _sse(json.dumps({"error": f"Chat {chat_id} not found"}))
+            yield _ndjson({"type": "error", "message": f"Chat {chat_id} not found"})
             return
 
         full_response = ""
         client_disconnected = False
-        stream_error: Optional[Dict[str, str]] = None
+        stream_error: Optional[str] = None
 
         try:
             async with aclosing(
@@ -452,17 +464,16 @@ async def stream_chat_response(
                         break
 
                     full_response += chunk
-                    yield _sse(json.dumps({"content": chunk, "done": False}))
+                    yield _ndjson({"type": "chunk", "content": chunk})
 
         except OllamaConnectionError as e:
             logger.error(f"[Req {request_id}] Ollama connection error: {e}")
-            stream_error = {
-                "error": "Unable to connect to Ollama",
-                "detail": "Please ensure Ollama is running",
-            }
+            stream_error = (
+                "Unable to connect to Ollama. Please ensure Ollama is running."
+            )
         except Exception as e:
             logger.error(f"[Req {request_id}] Streaming error: {e}")
-            stream_error = {"error": "Internal server error", "detail": str(e)}
+            stream_error = f"Internal server error: {e}"
 
         # Persist whatever the assistant produced, marking truncated when the
         # stream did not complete cleanly. Use a fresh session — the setup
@@ -484,14 +495,15 @@ async def stream_chat_response(
                 f"[Req {request_id}] Failed to persist assistant message: {e}"
             )
 
-        # Emit final frame
+        # Emit final frame. Errors are terminal; success carries the truncated
+        # flag so the FE can render a "regenerate" affordance on partial responses.
         if stream_error is not None:
-            yield _sse(json.dumps(stream_error))
+            yield _ndjson({"type": "error", "message": stream_error})
         else:
-            yield _sse(json.dumps({"content": "", "done": True}))
+            yield _ndjson({"type": "done", "truncated": is_truncated})
 
         # First successful assistant turn → kick off title generation in the
-        # background so it never blocks the `done` signal above.
+        # background so it never blocks the `done` frame above.
         if assistant_count == 1 and not is_truncated:
             asyncio.create_task(
                 generate_and_update_title(chat_id, cascade.title_model)
@@ -499,7 +511,7 @@ async def stream_chat_response(
 
     return StreamingResponse(
         event_generator(),
-        media_type="text/event-stream",
+        media_type="application/x-ndjson",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -508,6 +520,6 @@ async def stream_chat_response(
     )
 
 
-def _sse(payload: str) -> bytes:
-    """Encode an SSE `data:` frame."""
-    return f"data: {payload}\n\n".encode("utf-8")
+def _ndjson(payload: dict) -> bytes:
+    """Encode one NDJSON line (single JSON object + newline)."""
+    return (json.dumps(payload) + "\n").encode("utf-8")
