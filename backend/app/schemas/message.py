@@ -16,6 +16,8 @@ class AttachedFileInfo(BaseModel):
     file_type: str
     file_size: int
 
+    model_config = {"from_attributes": True}
+
 
 class MessageBase(BaseModel):
     """Base message schema with common attributes."""
