@@ -16,7 +16,6 @@ class SettingsBase(BaseModel):
     default_temperature: float = Field(..., ge=0.0, le=2.0)
     default_max_tokens: int = Field(..., gt=0)
     num_ctx: int = Field(..., gt=0)
-    theme: str = Field(..., pattern="^(dark|light)$")
 
 
 class SettingsUpdate(BaseModel):
@@ -27,7 +26,6 @@ class SettingsUpdate(BaseModel):
     default_temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     default_max_tokens: Optional[int] = Field(None, gt=0)
     num_ctx: Optional[int] = Field(None, gt=0)
-    theme: Optional[str] = Field(None, pattern="^(dark|light)$")
 
 
 class SettingsResponse(SettingsBase):

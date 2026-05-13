@@ -5,7 +5,6 @@ export interface Settings {
   default_temperature: number
   default_max_tokens: number
   num_ctx: number
-  theme: 'dark' | 'light'
   created_at: string
   updated_at: string
 }
@@ -16,7 +15,6 @@ export interface SettingsUpdate {
   default_temperature?: number
   default_max_tokens?: number
   num_ctx?: number
-  theme?: 'dark' | 'light'
 }
 
 export interface ChatSettings {

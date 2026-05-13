@@ -57,8 +57,15 @@ Edit `.env` to customize:
 | `POSTGRES_PASSWORD` | Database password | *required* |
 | `POSTGRES_DB` | Database name | `ollama_chat` |
 | `OLLAMA_BASE_URL` | Ollama API endpoint | `http://host.docker.internal:11434` |
-| `DEFAULT_MODEL` | Default model for new chats | `qwen2.5-coder:14b` |
+| `DEFAULT_MODEL` | Default model for new chats *(seed only — see note below)* | `qwen2.5-coder:14b` |
 | `DEBUG` | Enable debug mode | `true` |
+| `RUN_MIGRATIONS_ON_STARTUP` | Apply `alembic upgrade head` in the FastAPI lifespan | `true` |
+
+**Note on `DEFAULT_MODEL` and friends**: env vars are *seed values only*. On
+first init the backend writes them into the `settings` row in the database;
+after that, the database is canonical. Changing the env var on a running
+install will not retroactively update existing settings — edit them via the
+**Settings** UI in the app instead.
 
 ## Available Commands
 
@@ -117,6 +124,22 @@ make shell-db   # Open PostgreSQL shell
 **Database connection error**
 - Run `make clean` to reset the database
 - Ensure `POSTGRES_PASSWORD` is set in `.env`
+
+**Upgrading from a pre-Alembic install**
+The database schema was previously bootstrapped by `postgres/init.sql` plus
+implicit table creation from the FastAPI lifespan. As of Phase 2 of
+`PLAN_NEW.md`, Alembic is the single source of truth and migrations run on
+startup. If you had an older install before this change, run **once**:
+
+```bash
+docker exec ollama_backend alembic stamp 005bd22e40f1
+docker exec ollama_backend alembic upgrade head
+```
+
+The `stamp` step tells Alembic that your existing schema is at the initial
+revision (so it doesn't try to re-create existing tables); `upgrade head`
+then applies any migrations newer than your install. Fresh installs do not
+need this — migrations run automatically on first boot.
 
 **Port already in use**
 - Stop other services using ports 5173, 8000, or 5432

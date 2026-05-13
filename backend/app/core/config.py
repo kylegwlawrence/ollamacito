@@ -49,6 +49,14 @@ class Settings(BaseSettings):
         default="mistral:7b",
         description="Model to use for chat title generation. Seed value only; the DB row is canonical after first init.",
     )
+
+    # Migration Settings
+    run_migrations_on_startup: bool = Field(
+        default=True,
+        description="Run `alembic upgrade head` in the FastAPI lifespan. "
+        "Default true for dev; set false in production where migrations "
+        "should be run as a deliberate step before deploy.",
+    )
     title_generation_prompt_file: str = Field(
         default="app/prompts/chat_title_generation.md",
         description="Path to prompt file for title generation (relative to backend directory)",

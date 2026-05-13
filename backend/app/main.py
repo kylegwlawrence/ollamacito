@@ -1,17 +1,22 @@
 """
 Main FastAPI application entry point.
 """
+import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+from alembic import command
+from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
-from app.db.base import Base
-from app.db.session import engine
+from app.db.models import Settings as DBSettings
+from app.db.session import AsyncSessionLocal
 from app.services.ollama_service import ollama_service
 from app.utils.exceptions import (
     ChatNotFoundException,
@@ -22,6 +27,45 @@ from app.utils.exceptions import (
 # Setup logging
 setup_logging()
 logger = get_logger(__name__)
+
+
+def _run_alembic_upgrade() -> None:
+    """
+    Run `alembic upgrade head` synchronously. Resolves `alembic.ini` relative
+    to the backend root (the parent of the `app/` package) so it works
+    regardless of the process cwd.
+    """
+    alembic_ini = Path(__file__).resolve().parent.parent / "alembic.ini"
+    if not alembic_ini.exists():
+        raise FileNotFoundError(f"alembic.ini not found at {alembic_ini}")
+    cfg = AlembicConfig(str(alembic_ini))
+    command.upgrade(cfg, "head")
+
+
+async def _seed_settings_row() -> None:
+    """
+    Insert the single Settings row if missing. Env vars seed the values at
+    install time; subsequent edits via the UI persist to the DB and are
+    canonical.
+    """
+    async with AsyncSessionLocal() as session:
+        existing = (
+            await session.execute(select(DBSettings).where(DBSettings.id == 1))
+        ).scalar_one_or_none()
+        if existing is not None:
+            return
+        session.add(
+            DBSettings(
+                id=1,
+                default_model=settings.default_model,
+                conversation_summarization_model=settings.title_generation_model,
+                default_temperature=0.7,
+                default_max_tokens=2048,
+                num_ctx=2048,
+            )
+        )
+        await session.commit()
+        logger.info("✓ Seeded initial Settings row")
 
 
 @asynccontextmanager
@@ -35,13 +79,25 @@ async def lifespan(app: FastAPI):
     logger.info(f"Debug mode: {settings.debug}")
     logger.info(f"Ollama URL: {settings.ollama_base_url}")
 
-    # Initialize database tables
+    # Apply database migrations. Alembic owns the schema; `Base.metadata.create_all`
+    # is deliberately not called here anymore (it was a silent secondary source of
+    # truth that masked schema drift from `postgres/init.sql`).
+    if settings.run_migrations_on_startup:
+        try:
+            await asyncio.to_thread(_run_alembic_upgrade)
+            logger.info("✓ Alembic migrations applied (upgrade head)")
+        except Exception as e:
+            logger.error(f"✗ Failed to apply migrations: {e}")
+            raise
+    else:
+        logger.info("Skipping migrations on startup (RUN_MIGRATIONS_ON_STARTUP=false)")
+
+    # Seed the global Settings row from env-var defaults if it does not yet
+    # exist. After this, the DB row is canonical.
     try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("✓ Database tables initialized")
+        await _seed_settings_row()
     except Exception as e:
-        logger.error(f"✗ Failed to initialize database: {e}")
+        logger.error(f"✗ Failed to seed Settings row: {e}")
         raise
 
     # Check Ollama connection

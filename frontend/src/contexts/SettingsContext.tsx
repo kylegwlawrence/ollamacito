@@ -12,7 +12,6 @@ const DEFAULT_SETTINGS: Settings = {
   default_temperature: 0.7,
   default_max_tokens: 2048,
   num_ctx: 2048,
-  theme: 'dark',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 }

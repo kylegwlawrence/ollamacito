@@ -47,11 +47,6 @@ class Settings(Base, TimestampMixin):
         default=2048,
         nullable=False,
     )
-    theme: Mapped[str] = mapped_column(
-        String(20),
-        default="dark",
-        nullable=False,
-    )
 
     __table_args__ = (
         CheckConstraint("id = 1", name="single_row_constraint"),
@@ -61,13 +56,12 @@ class Settings(Base, TimestampMixin):
         ),
         CheckConstraint("default_max_tokens > 0", name="positive_tokens"),
         CheckConstraint("num_ctx > 0", name="positive_num_ctx"),
-        CheckConstraint("theme IN ('dark', 'light')", name="valid_theme"),
     )
 
     def __repr__(self) -> str:
         return (
             f"<Settings(model={self.default_model}, "
-            f"temp={self.default_temperature}, theme={self.theme})>"
+            f"temp={self.default_temperature})>"
         )
 
 

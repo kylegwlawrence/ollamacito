@@ -50,7 +50,6 @@ async def get_global_settings(
                 default_temperature=0.7,
                 default_max_tokens=2048,
                 num_ctx=2048,
-                theme="dark",
             )
             db.add(settings)
             await db.flush()
@@ -95,7 +94,6 @@ async def update_global_settings(
                 default_temperature=0.7,
                 default_max_tokens=2048,
                 num_ctx=2048,
-                theme="dark",
             )
             db.add(settings)
 
@@ -110,8 +108,6 @@ async def update_global_settings(
             settings.default_max_tokens = settings_data.default_max_tokens
         if settings_data.num_ctx is not None:
             settings.num_ctx = settings_data.num_ctx
-        if settings_data.theme is not None:
-            settings.theme = settings_data.theme
 
         await db.flush()
         await db.refresh(settings)
