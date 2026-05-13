@@ -39,12 +39,11 @@ export const ChatContainer = () => {
   }
 
   // Sync store with URL: route param drives which chat is loaded.
+  // Always refetch on chatId change — the sidebar may have pre-populated
+  // `currentChat`, but the message list lives in the same store and would
+  // otherwise show messages from the previous chat.
   useEffect(() => {
     if (chatId) {
-      // If the store already has it (sidebar pre-populated), don't refetch.
-      if (currentChat?.id === chatId) {
-        return
-      }
       loadMessages(chatId)
     } else {
       setCurrentChat(null)
