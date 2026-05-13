@@ -50,11 +50,24 @@ Phase 3 of `PLAN_NEW.md` makes settings per-user (drops the singleton).
 
 ## Tests + lint
 
-- `make test` — run backend pytest (currently empty; Phase 1+ of PLAN_NEW.md populates)
+- `make test` — backend pytest (40+ tests covering streams, isolation, file attachment, CRUD)
+- `docker exec ollama_frontend npm test` — frontend Vitest (stores + useStreaming)
 - `make lint` — ruff (backend) + eslint (frontend)
 - `make format` — black (backend) + prettier (frontend)
 
-There are no frontend tests yet (Phase 4/5/8 of PLAN_NEW.md adds Vitest).
+CI (`.github/workflows/ci.yml`) runs all of the above on push + PR, plus
+`alembic upgrade head`, `alembic check`, and a Docker image build.
+
+### Pre-commit (optional but recommended)
+
+```bash
+pipx install pre-commit
+pre-commit install
+```
+
+Then every `git commit` runs ruff + black on staged Python and eslint +
+prettier on staged TS/CSS. Run on the whole tree with
+`pre-commit run --all-files`.
 
 ## Migrations
 

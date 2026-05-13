@@ -116,7 +116,7 @@ async def update_global_settings(
         )
 
 
-@router.get("/{chat_id}/settings", response_model=ChatSettingsResponse)
+@router.get("/chats/{chat_id}/settings", response_model=ChatSettingsResponse)
 async def get_chat_settings(
     chat: Annotated[Chat, Depends(get_chat_or_404)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -135,7 +135,7 @@ async def get_chat_settings(
     return ChatSettingsResponse.model_validate(chat_settings)
 
 
-@router.patch("/{chat_id}/settings", response_model=ChatSettingsResponse)
+@router.patch("/chats/{chat_id}/settings", response_model=ChatSettingsResponse)
 async def update_chat_settings(
     settings_data: ChatSettingsUpdate,
     chat: Annotated[Chat, Depends(get_chat_or_404)],

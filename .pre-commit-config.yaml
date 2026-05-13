@@ -1,0 +1,53 @@
+# Pre-commit hooks for the Ollama GUI app (PLAN_NEW.md Phase 8).
+#
+# Install once:
+#   pipx install pre-commit && pre-commit install
+#
+# Then every `git commit` will run these on the staged files. Use
+# `pre-commit run --all-files` to lint the whole tree on demand.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        exclude: ^\.github/workflows/  # GHA action expressions confuse the yaml lib
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-merge-conflict
+
+  # ---- Python (backend) ----
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.6
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^backend/app/.*\.py$
+
+  - repo: https://github.com/psf/black
+    rev: 25.9.0
+    hooks:
+      - id: black
+        files: ^backend/app/.*\.py$
+        # Match the project's pinned version (see backend/requirements-dev.txt)
+        # so the same formatter behavior runs locally and in CI.
+        language_version: python3
+
+  # ---- Frontend (eslint + prettier) ----
+  # These run from inside the frontend dir using local node_modules. The
+  # `entry` shell-pipe pattern is the recommended workaround for hooks
+  # that need a project-local binary.
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint (frontend)
+        language: system
+        entry: bash -c 'cd frontend && npx eslint --fix --max-warnings 0 "$@"' --
+        files: ^frontend/src/.*\.(ts|tsx)$
+
+      - id: prettier
+        name: prettier (frontend)
+        language: system
+        entry: bash -c 'cd frontend && npx prettier --write "$@"' --
+        files: ^frontend/src/.*\.(ts|tsx|css)$
