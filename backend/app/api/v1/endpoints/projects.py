@@ -10,7 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db, get_project_or_404
 from app.core.logging import get_logger
-from app.db.models import Chat, Message, Project, ProjectFile, User
+from app.db.models import Chat, Project, ProjectFile, User
+from app.db.models import Settings as UserSettings
 from app.schemas.chat import ChatListResponse, ChatResponse
 from app.schemas.project import (
     ProjectCreate,
@@ -609,7 +610,6 @@ async def generate_project_memory(
     transcript = "\n\n".join(transcript_parts)
 
     # Resolve generation model from per-user Settings (same field title-gen uses).
-    from app.db.models import Settings as UserSettings  # local import to avoid name clash
     user_settings = (
         await db.execute(select(UserSettings).where(UserSettings.user_id == current_user.id))
     ).scalar_one_or_none()

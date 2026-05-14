@@ -333,7 +333,6 @@ class OllamaService:
             logger.error(f"Error in title generation: {e}")
             raise OllamaConnectionError(self.base_url, str(e))
 
-
     def _load_memory_prompt(self) -> str:
         """Load the memory-generation prompt template (with `{transcript}` placeholder)."""
         try:

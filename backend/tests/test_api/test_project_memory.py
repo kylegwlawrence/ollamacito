@@ -12,11 +12,10 @@ from uuid import uuid4
 import httpx
 import pytest
 import pytest_asyncio
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 
-from app.db.models import DEFAULT_USER_ID, Chat, Message, Project, User
+from app.db.models import Message, Project, User
 from app.db.session import AsyncSessionLocal
-
 from tests.conftest import FakeOllama
 
 
