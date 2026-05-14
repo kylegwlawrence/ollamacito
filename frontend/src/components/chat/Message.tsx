@@ -8,17 +8,19 @@ interface MessageProps {
   message: MessageType
 }
 
-// Build an article URL preserving slashes in the title but encoding everything else.
-// Per LOCAL_WIKIPEDIA_API.md, FastAPI's {title:path} converter requires slashes to
-// remain unencoded (e.g. "AC/DC") while spaces / ? / # / & must be encoded.
+// Build the browser-facing article URL: `{base}/?wiki={corpus}&article={title}`.
+// `server_base_url` is the URL the backend uses to call the RAG server, which is
+// typically `host.docker.internal` from inside Docker — we rewrite that to
+// `localhost` so the link resolves from the user's browser on the host.
 const buildArticleUrl = (
   baseUrl: string,
-  template: string,
+  corpus: string,
   title: string
 ): string => {
-  const encodedTitle = encodeURIComponent(title).replace(/%2F/g, '/')
-  const path = template.replace('{title}', encodedTitle)
-  return baseUrl.replace(/\/$/, '') + path
+  const browserBase = baseUrl
+    .replace(/host\.docker\.internal/g, 'localhost')
+    .replace(/\/$/, '')
+  return `${browserBase}/?wiki=${encodeURIComponent(corpus)}&article=${encodeURIComponent(title)}`
 }
 
 const Sources = ({ citations }: { citations: RagCitations }) => {
@@ -43,7 +45,7 @@ const Sources = ({ citations }: { citations: RagCitations }) => {
               className="message__sources-link"
               href={buildArticleUrl(
                 citations.server_base_url,
-                citations.article_url_template,
+                citations.corpus,
                 hit.title
               )}
               target="_blank"
