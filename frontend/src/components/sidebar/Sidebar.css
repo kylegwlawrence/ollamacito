@@ -125,17 +125,6 @@
   flex-shrink: 0;
 }
 
-.sidebar__model-row {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-}
-
-.sidebar__model-icon {
-  color: var(--on-surf-2);
-  flex-shrink: 0;
-}
-
 .sidebar__settings-link {
   display: flex;
   align-items: center;

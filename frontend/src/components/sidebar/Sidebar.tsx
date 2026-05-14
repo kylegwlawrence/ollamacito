@@ -3,14 +3,12 @@ import { useMatch, useNavigate } from 'react-router-dom'
 import { useChatStore } from '@/stores/chatStore'
 import { useChats } from '@/hooks/useChats'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { useModels } from '@/hooks/useModels'
 import { useConfirmStore } from '@/stores/confirmStore'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { usePromptStore } from '@/stores/promptStore'
 import { useToastStore } from '@/stores/toastStore'
 import { Button } from '../common/Button'
 import { Icon } from '../common/Icon'
-import { Select } from '../common/Select'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ChatItem } from './ChatItem'
 import { ProjectItem } from './ProjectItem'
@@ -22,7 +20,6 @@ export const Sidebar = () => {
   const setCurrentChat = useChatStore((s) => s.setCurrentChat)
   const { chats, loading, loadChats, createChat, updateChat, deleteChat } = useChats()
   const settings = useSettingsStore((s) => s.settings)
-  const { models } = useModels()
   const projects = useProjectsStore((s) => s.projects)
   const projectsLoading = useProjectsStore((s) => s.loading)
   const createProject = useProjectsStore((s) => s.createProject)
@@ -35,7 +32,6 @@ export const Sidebar = () => {
   const projectMatch = useMatch('/projects/:projectId/*')
   const currentProjectId = projectMatch?.params.projectId ?? null
 
-  const [selectedModel, setSelectedModel] = useState<string>(settings.default_model)
   const [projectsExpanded, setProjectsExpanded] = useState(true)
   const [chatsExpanded, setChatsExpanded] = useState(true)
 
@@ -43,14 +39,10 @@ export const Sidebar = () => {
     loadChats()
   }, [loadChats])
 
-  useEffect(() => {
-    setSelectedModel(settings.default_model)
-  }, [settings.default_model])
-
   const handleNewChat = async () => {
     const newChat = await createChat({
       title: 'New Chat',
-      model: selectedModel,
+      model: settings.default_model,
     })
     if (newChat) {
       setCurrentChat(newChat)
@@ -137,7 +129,6 @@ export const Sidebar = () => {
   }
 
   const standaloneChats = chats.filter((chat) => !chat.project_id)
-  const modelOptions = models.map((m) => ({ value: m.name, label: m.name }))
 
   return (
     <nav className="sidebar" aria-label="Main navigation">
@@ -258,17 +249,8 @@ export const Sidebar = () => {
         </section>
       </div>
 
-      {/* Footer: model picker + settings */}
+      {/* Footer: settings */}
       <div className="sidebar__footer">
-        <div className="sidebar__model-row">
-          <Icon name="smart_toy" size={16} className="sidebar__model-icon" />
-          <Select
-            value={selectedModel}
-            onChange={setSelectedModel}
-            options={modelOptions}
-            aria-label="Select model for new chats"
-          />
-        </div>
         <button
           className="sidebar__settings-link"
           onClick={() => navigate('/settings')}
