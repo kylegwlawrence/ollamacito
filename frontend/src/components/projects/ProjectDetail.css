@@ -346,3 +346,11 @@
   padding-top: var(--s-3);
   border-top: 1px solid var(--border-subtle);
 }
+
+/* Memory textarea — taller than the standard project-detail__textarea */
+.project-detail__memory-textarea {
+  min-height: 200px;
+  font-family: 'Roboto Mono', ui-monospace, monospace;
+  font-size: var(--fs-body-sm);
+  line-height: 1.6;
+}

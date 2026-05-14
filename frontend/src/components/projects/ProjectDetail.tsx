@@ -56,6 +56,11 @@ export const ProjectDetail = () => {
   const [hasSettingsChanges, setHasSettingsChanges] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
 
+  // Memory section state
+  const [memoryDraft, setMemoryDraft] = useState('')
+  const [isGeneratingMemory, setIsGeneratingMemory] = useState(false)
+  const [savingMemory, setSavingMemory] = useState(false)
+
   useEffect(() => {
     if (currentProjectId) {
       loadProjectData()
@@ -85,6 +90,13 @@ export const ProjectDetail = () => {
       setEditedRagCorpusId(currentProject.rag_corpus_id || '')
       setEditedRagTopK(currentProject.rag_top_k?.toString() || '')
       setRagInfo(null)
+    }
+  }, [currentProject])
+
+  // Re-sync memory draft when the loaded project changes
+  useEffect(() => {
+    if (currentProject) {
+      setMemoryDraft(currentProject.memory ?? '')
     }
   }, [currentProject])
 
@@ -311,6 +323,66 @@ export const ProjectDetail = () => {
       setEditedRagCorpusId(currentProject.rag_corpus_id || '')
       setEditedRagTopK(currentProject.rag_top_k?.toString() || '')
       setHasSettingsChanges(false)
+    }
+  }
+
+  const handleGenerateMemory = async () => {
+    if (!currentProjectId) return
+    try {
+      setIsGeneratingMemory(true)
+      const generated = await projectApi.generateMemory(currentProjectId)
+      setMemoryDraft(generated)
+      showToast('Memory generated. Click Save to persist.', 'success')
+    } catch (err) {
+      console.error('Failed to generate memory:', err)
+      const message = err instanceof Error ? err.message : 'Memory generation failed'
+      showToast(message, 'error')
+    } finally {
+      setIsGeneratingMemory(false)
+    }
+  }
+
+  const handleSaveMemory = async () => {
+    if (!currentProjectId || !currentProject) return
+    try {
+      setSavingMemory(true)
+      const updated = await updateProject(currentProjectId, {
+        memory: memoryDraft.trim() ? memoryDraft : null,
+      })
+      if (updated) {
+        setCurrentProject({
+          ...updated,
+          files: currentProject.files,
+        })
+        showToast('Memory saved', 'success')
+      }
+    } catch (err) {
+      console.error('Failed to save memory:', err)
+      showToast('Failed to save memory', 'error')
+    } finally {
+      setSavingMemory(false)
+    }
+  }
+
+  const handleClearMemory = async () => {
+    if (!currentProjectId || !currentProject) return
+    const ok = await confirm({
+      title: 'Clear project memory?',
+      message: 'The saved memory document will be removed. This cannot be undone.',
+      confirmLabel: 'Clear',
+      variant: 'danger',
+    })
+    if (!ok) return
+    try {
+      const updated = await updateProject(currentProjectId, { memory: null })
+      if (updated) {
+        setCurrentProject({ ...updated, files: currentProject.files })
+        setMemoryDraft('')
+        showToast('Memory cleared', 'success')
+      }
+    } catch (err) {
+      console.error('Failed to clear memory:', err)
+      showToast('Failed to clear memory', 'error')
     }
   }
 
@@ -692,13 +764,58 @@ export const ProjectDetail = () => {
         <div className="card project-detail__section">
           <div className="project-detail__section-header">
             <h2>Memory</h2>
-            <button className="project-detail__button-disabled" disabled>
-              Generate Memory
-            </button>
+            <div className="project-detail__header-actions">
+              {(currentProject.memory ?? '') !== '' && (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleClearMemory}
+                  disabled={isGeneratingMemory || savingMemory}
+                >
+                  Clear
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleGenerateMemory}
+                disabled={isGeneratingMemory || savingMemory}
+              >
+                {isGeneratingMemory ? 'Generating…' : 'Generate Memory'}
+              </Button>
+            </div>
           </div>
-          <div className="project-detail__placeholder">
-            <p>Memory generation coming soon</p>
-          </div>
+          <textarea
+            className="project-detail__textarea project-detail__memory-textarea"
+            value={memoryDraft}
+            onChange={(e) => setMemoryDraft(e.target.value)}
+            placeholder="No memory yet. Click 'Generate Memory' to extract key project facts and decisions from your chats, or type notes directly."
+            rows={10}
+            disabled={isGeneratingMemory}
+          />
+          <span className="project-detail__hint">
+            Memory is injected at the top of every system prompt in this project's chats.
+          </span>
+          {memoryDraft !== (currentProject.memory ?? '') && (
+            <div className="project-detail__settings-actions">
+              <Button
+                onClick={handleSaveMemory}
+                variant="primary"
+                size="sm"
+                disabled={savingMemory}
+              >
+                {savingMemory ? 'Saving…' : 'Save Memory'}
+              </Button>
+              <Button
+                onClick={() => setMemoryDraft(currentProject.memory ?? '')}
+                variant="secondary"
+                size="sm"
+                disabled={savingMemory}
+              >
+                Discard
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>
