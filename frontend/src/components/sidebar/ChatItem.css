@@ -90,7 +90,7 @@
 
 .chat-item__edit:hover {
   color: var(--warning);
-  background: rgba(230, 181, 102, 0.12);
+  background: var(--warning-tint);
 }
 
 .chat-item__delete {

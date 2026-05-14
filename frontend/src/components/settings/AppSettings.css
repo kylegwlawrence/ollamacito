@@ -138,3 +138,38 @@
   color: var(--on-surf-1);
   font-weight: var(--fw-semibold);
 }
+
+.app-settings__theme-group {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.app-settings__theme-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: var(--h-control);
+  padding: 0 var(--s-4);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surf-2);
+  color: var(--on-surf-1);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-std),
+    color var(--dur-fast) var(--ease-std),
+    border-color var(--dur-fast) var(--ease-std);
+}
+
+.app-settings__theme-btn:hover {
+  background: var(--surf-3);
+}
+
+.app-settings__theme-btn--active {
+  background: var(--brand-tint);
+  border-color: var(--brand);
+  color: var(--on-surf-0);
+}

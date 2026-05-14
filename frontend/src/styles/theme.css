@@ -1,39 +1,40 @@
-/* Design System Tokens — dark theme only */
+/* Design System Tokens */
 
 :root {
-  /* Surfaces */
-  --surf-0: #15171C;
-  --surf-1: #1B1E25;
-  --surf-2: #232732;
-  --surf-3: #2C313D;
+  /* Surfaces — light (default) */
+  --surf-0: #EFF1F5;
+  --surf-1: #FFFFFF;
+  --surf-2: #E4E8EF;
+  --surf-3: #D8DCE5;
 
   /* Brand */
   --brand: #6FD18A;
   --brand-hover: #5BB874;
   --brand-press: #4FA365;
-  --brand-tint: #1F2A22;
+  --brand-tint: #DAF2E3;
   --on-brand: #0E1A0F;
 
   /* Text */
-  --on-surf-0: #E6EAF2;
-  --on-surf-1: #C2C7D2;
-  --on-surf-2: #8B92A0;
-  --on-surf-dim: #6B7180;
+  --on-surf-0: #0D1117;
+  --on-surf-1: #2C3340;
+  --on-surf-2: #5A6478;
+  --on-surf-dim: #8F9BAD;
 
   /* Status */
-  --success: #6FD18A;
-  --warning: #E6B566;
-  --danger: #F2786F;
-  --danger-tint: #2A1B1A;
+  --success: #1D8A40;
+  --warning: #A16207;
+  --danger: #C41F17;
+  --danger-tint: #FEE9E8;
+  --warning-tint: rgba(161, 98, 7, 0.10);
 
   /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.16);
 
   /* Elevation */
-  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --elev-2: 0 4px 12px rgba(0, 0, 0, 0.40);
-  --elev-3: 0 16px 32px rgba(0, 0, 0, 0.50);
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --elev-2: 0 4px 12px rgba(0, 0, 0, 0.10);
+  --elev-3: 0 16px 32px rgba(0, 0, 0, 0.15);
 
   /* Radii */
   --r-xs: 4px;
@@ -76,6 +77,34 @@
   --h-control: 36px;
   --h-control-lg: 44px;
 
+}
+
+/* Dark theme overrides */
+[data-theme="dark"] {
+  --surf-0: #15171C;
+  --surf-1: #1B1E25;
+  --surf-2: #232732;
+  --surf-3: #2C313D;
+
+  --brand-tint: #1F2A22;
+
+  --on-surf-0: #E6EAF2;
+  --on-surf-1: #C2C7D2;
+  --on-surf-2: #8B92A0;
+  --on-surf-dim: #6B7180;
+
+  --success: #6FD18A;
+  --warning: #E6B566;
+  --danger: #F2786F;
+  --danger-tint: #2A1B1A;
+  --warning-tint: rgba(230, 181, 102, 0.12);
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --elev-2: 0 4px 12px rgba(0, 0, 0, 0.40);
+  --elev-3: 0 16px 32px rgba(0, 0, 0, 0.50);
 }
 
 /* Scrollbar */

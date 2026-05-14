@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useConfirmStore } from '@/stores/confirmStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useToastStore } from '@/stores/toastStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { useModels } from '@/hooks/useModels'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
@@ -19,6 +20,8 @@ export const AppSettings = () => {
   const showToast = useToastStore((s) => s.showToast)
   const confirm = useConfirmStore((s) => s.ask)
   const { models } = useModels()
+  const theme = useThemeStore((s) => s.theme)
+  const setTheme = useThemeStore((s) => s.setTheme)
 
   const [defaultModel, setDefaultModel] = useState<string>('')
   const [conversationSummarizationModel, setConversationSummarizationModel] = useState<string>('')
@@ -156,6 +159,32 @@ export const AppSettings = () => {
       />
 
       <div className="app-settings__body">
+        {/* Appearance */}
+        <div className="card app-settings__section">
+          <h3 className="app-settings__section-title">Appearance</h3>
+          <div className="app-settings__field">
+            <span className="app-settings__label">Theme</span>
+            <div className="app-settings__theme-group" role="group" aria-label="Select theme">
+              <button
+                className={`app-settings__theme-btn${theme === 'light' ? ' app-settings__theme-btn--active' : ''}`}
+                onClick={() => setTheme('light')}
+                aria-pressed={theme === 'light'}
+              >
+                <Icon name="light_mode" size={16} />
+                Light
+              </button>
+              <button
+                className={`app-settings__theme-btn${theme === 'dark' ? ' app-settings__theme-btn--active' : ''}`}
+                onClick={() => setTheme('dark')}
+                aria-pressed={theme === 'dark'}
+              >
+                <Icon name="dark_mode" size={16} />
+                Dark
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Model Configuration */}
         <div className="card app-settings__section">
           <h3 className="app-settings__section-title">Model Configuration</h3>
