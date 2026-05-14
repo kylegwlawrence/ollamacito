@@ -39,6 +39,14 @@
   flex: 1;
 }
 
+.chat-container__project-name {
+  font-family: 'Trebuchet MS';
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
 .chat-container__back-button {
   background: none;
   border: none;
@@ -65,11 +73,9 @@
   left: 50%;
   transform: translateX(-50%);
   margin: 0;
-
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--accent-color);
-
   max-width: 60%;
   overflow: hidden;
   text-overflow: ellipsis;

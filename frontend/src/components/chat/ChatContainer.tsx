@@ -20,6 +20,10 @@ export const ChatContainer = () => {
   const setSelectedFileIds = useChatStore((s) => s.setSelectedFileIds)
   const toggleFileId = useChatStore((s) => s.toggleFileId)
   const currentProject = useProjectsStore((s) => s.currentProject)
+  const projects = useProjectsStore((s) => s.projects)
+  const chatProject = currentChat?.project_id
+    ? (projects.find((p) => p.id === currentChat.project_id) ?? currentProject)
+    : null
 
   // Streaming now lives in a global store (see streamingStore.ts), so it
   // survives navigation: leaving the chat page mid-response no longer aborts
@@ -113,6 +117,9 @@ export const ChatContainer = () => {
             >
               ← Back to Project
             </button>
+          )}
+          {chatProject && (
+            <span className="chat-container__project-name">{chatProject.name}</span>
           )}
           <h2 className="chat-container__title">{currentChat.title}</h2>
         </div>
