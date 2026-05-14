@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useConfirmStore } from '@/stores/confirmStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useToastStore } from '@/stores/toastStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useModels } from '@/hooks/useModels'
-import { Button } from '../common/Button'
+import { useDebouncedCallback } from '@/hooks/useDebouncedCallback'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ViewHeader } from '../common/ViewHeader'
 import { Icon } from '../common/Icon'
 import { Select } from '../common/Select'
+import type { Settings } from '@/types'
 import './AppSettings.css'
+
+const AUTOSAVE_DELAY_MS = 500
 
 export const AppSettings = () => {
   const navigate = useNavigate()
@@ -18,7 +20,6 @@ export const AppSettings = () => {
   const settingsLoading = useSettingsStore((s) => s.loading)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
   const showToast = useToastStore((s) => s.showToast)
-  const confirm = useConfirmStore((s) => s.ask)
   const { models } = useModels()
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
@@ -28,8 +29,6 @@ export const AppSettings = () => {
   const [temperature, setTemperature] = useState<string>('')
   const [maxTokens, setMaxTokens] = useState<string>('')
   const [numCtx, setNumCtx] = useState<string>('')
-  const [saving, setSaving] = useState(false)
-  const [hasChanges, setHasChanges] = useState(false)
 
   const parsedMaxTokens = maxTokens ? parseInt(maxTokens, 10) : NaN
   const parsedNumCtx = numCtx ? parseInt(numCtx, 10) : NaN
@@ -50,73 +49,59 @@ export const AppSettings = () => {
     }
   }, [settings])
 
-  useEffect(() => {
-    if (settings) {
-      const modelChanged = defaultModel !== settings.default_model
-      const summarizationModelChanged = conversationSummarizationModel !== settings.conversation_summarization_model
-      const tempChanged = temperature !== settings.default_temperature?.toString()
-      const tokensChanged = maxTokens !== settings.default_max_tokens?.toString()
-      const numCtxChanged = numCtx !== settings.num_ctx?.toString()
-      setHasChanges(modelChanged || summarizationModelChanged || tempChanged || tokensChanged || numCtxChanged)
-    }
-  }, [defaultModel, conversationSummarizationModel, temperature, maxTokens, numCtx, settings])
-
-  const handleSave = async () => {
-    if (!settings) return
-    if (tokenBudgetError) {
-      showToast(tokenBudgetError, 'error')
-      return
-    }
-
-    try {
-      setSaving(true)
-
-      const updates = {
-        default_model: defaultModel.trim() || undefined,
-        conversation_summarization_model: conversationSummarizationModel.trim() || undefined,
-        default_temperature: temperature ? parseFloat(temperature) : undefined,
-        default_max_tokens: maxTokens ? parseInt(maxTokens, 10) : undefined,
-        num_ctx: numCtx ? parseInt(numCtx, 10) : undefined,
-      }
-
-      const updated = await updateSettings(updates)
-
-      if (updated) {
-        setHasChanges(false)
-        showToast('Application settings saved successfully!', 'success')
-      } else {
-        showToast('Failed to save application settings', 'error')
-      }
-    } catch (err) {
-      console.error('Failed to save application settings:', err)
-      showToast('Failed to save application settings', 'error')
-    } finally {
-      setSaving(false)
+  const persist = async (patch: Partial<Settings>) => {
+    const updated = await updateSettings(patch)
+    if (!updated) {
+      showToast('Failed to save settings', 'error')
     }
   }
 
-  const handleCancel = () => {
-    if (settings) {
-      setDefaultModel(settings.default_model || '')
-      setConversationSummarizationModel(settings.conversation_summarization_model || '')
-      setTemperature(settings.default_temperature?.toString() || '')
-      setMaxTokens(settings.default_max_tokens?.toString() || '')
-      setNumCtx(settings.num_ctx?.toString() || '')
-      setHasChanges(false)
+  const persistDebounced = useDebouncedCallback(persist, AUTOSAVE_DELAY_MS)
+
+  // Numeric/text fields: update local state, validate, debounce-save when valid.
+  const handleTemperatureChange = (value: string) => {
+    setTemperature(value)
+    if (!value) return
+    const parsed = parseFloat(value)
+    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 2) {
+      persistDebounced({ default_temperature: parsed })
     }
   }
 
-  const handleBack = async () => {
-    if (hasChanges) {
-      const ok = await confirm({
-        title: 'Discard unsaved changes?',
-        message: 'You have unsaved changes that will be lost if you leave.',
-        confirmLabel: 'Discard',
-        variant: 'danger',
-      })
-      if (!ok) return
-    }
-    navigate('/')
+  const handleMaxTokensChange = (value: string) => {
+    setMaxTokens(value)
+    if (!value) return
+    const parsed = parseInt(value, 10)
+    if (!Number.isFinite(parsed) || parsed <= 0) return
+    // Block save (but keep local state) if the new value violates the
+    // budget against the current num_ctx — the inline error explains why.
+    const currentNumCtx = numCtx ? parseInt(numCtx, 10) : NaN
+    if (Number.isFinite(currentNumCtx) && parsed >= currentNumCtx) return
+    persistDebounced({ default_max_tokens: parsed })
+  }
+
+  const handleNumCtxChange = (value: string) => {
+    setNumCtx(value)
+    if (!value) return
+    const parsed = parseInt(value, 10)
+    if (!Number.isFinite(parsed) || parsed <= 0) return
+    const currentMaxTokens = maxTokens ? parseInt(maxTokens, 10) : NaN
+    if (Number.isFinite(currentMaxTokens) && currentMaxTokens >= parsed) return
+    persistDebounced({ num_ctx: parsed })
+  }
+
+  // Selects: save immediately; cancel any pending debounced save first so it
+  // doesn't clobber the new value on a slow burst.
+  const handleDefaultModelChange = (value: string) => {
+    setDefaultModel(value)
+    persistDebounced.cancel()
+    persist({ default_model: value || undefined })
+  }
+
+  const handleSummarizationModelChange = (value: string) => {
+    setConversationSummarizationModel(value)
+    persistDebounced.cancel()
+    persist({ conversation_summarization_model: value || undefined })
   }
 
   if (settingsLoading) {
@@ -133,29 +118,18 @@ export const AppSettings = () => {
     <div className="app-settings">
       <ViewHeader
         breadcrumb={
-          <button className="app-settings__back-btn" onClick={handleBack}>
+          <button
+            className="app-settings__back-btn"
+            onClick={() => {
+              persistDebounced.flush()
+              navigate('/')
+            }}
+          >
             <Icon name="arrow_back" size={16} />
             Home
           </button>
         }
         title="Application Settings"
-        actions={
-          hasChanges ? (
-            <div className="app-settings__header-actions">
-              <Button onClick={handleCancel} variant="secondary" size="sm" disabled={saving}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSave}
-                variant="primary"
-                size="sm"
-                disabled={saving || tokenBudgetError !== null}
-              >
-                {saving ? 'Saving...' : 'Save Changes'}
-              </Button>
-            </div>
-          ) : undefined
-        }
       />
 
       <div className="app-settings__body">
@@ -197,7 +171,7 @@ export const AppSettings = () => {
             <span className="app-settings__label">Default Model</span>
             <Select
               value={defaultModel}
-              onChange={setDefaultModel}
+              onChange={handleDefaultModelChange}
               options={modelOptions}
               aria-label="Select default model"
             />
@@ -210,7 +184,7 @@ export const AppSettings = () => {
             <span className="app-settings__label">Conversation Summarization Model</span>
             <Select
               value={conversationSummarizationModel}
-              onChange={setConversationSummarizationModel}
+              onChange={handleSummarizationModelChange}
               options={modelOptions}
               aria-label="Select summarization model"
             />
@@ -234,7 +208,8 @@ export const AppSettings = () => {
               type="number"
               className="app-settings__input"
               value={temperature}
-              onChange={(e) => setTemperature(e.target.value)}
+              onChange={(e) => handleTemperatureChange(e.target.value)}
+              onBlur={() => persistDebounced.flush()}
               min="0"
               max="2"
               step="0.1"
@@ -252,7 +227,8 @@ export const AppSettings = () => {
               type="number"
               className={`app-settings__input${tokenBudgetError ? ' app-settings__input--invalid' : ''}`}
               value={maxTokens}
-              onChange={(e) => setMaxTokens(e.target.value)}
+              onChange={(e) => handleMaxTokensChange(e.target.value)}
+              onBlur={() => persistDebounced.flush()}
               min="1"
               step="1"
               aria-invalid={tokenBudgetError !== null}
@@ -279,7 +255,8 @@ export const AppSettings = () => {
               type="number"
               className={`app-settings__input${tokenBudgetError ? ' app-settings__input--invalid' : ''}`}
               value={numCtx}
-              onChange={(e) => setNumCtx(e.target.value)}
+              onChange={(e) => handleNumCtxChange(e.target.value)}
+              onBlur={() => persistDebounced.flush()}
               min="1"
               step="1"
               aria-invalid={tokenBudgetError !== null}

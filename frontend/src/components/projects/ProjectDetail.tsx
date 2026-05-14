@@ -9,6 +9,7 @@ import { useToastStore } from '@/stores/toastStore'
 import { useConfirmStore } from '@/stores/confirmStore'
 import { projectApi } from '@/services/projectApi'
 import { useRagServersStore } from '@/stores/ragServersStore'
+import { useDebouncedCallback } from '@/hooks/useDebouncedCallback'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ViewHeader } from '../common/ViewHeader'
@@ -17,8 +18,10 @@ import { Select } from '../common/Select'
 import { ChatItem } from '../sidebar/ChatItem'
 import { FileUpload } from '../files/FileUpload'
 import { FileList } from '../files/FileList'
-import type { Chat } from '@/types'
+import type { Chat, ProjectUpdate } from '@/types'
 import './ProjectDetail.css'
+
+const AUTOSAVE_DELAY_MS = 500
 
 export const ProjectDetail = () => {
   const { projectId: currentProjectId } = useParams<{ projectId: string }>()
@@ -51,8 +54,6 @@ export const ProjectDetail = () => {
   const [editedRagEnabled, setEditedRagEnabled] = useState(false)
   const [editedRagServerId, setEditedRagServerId] = useState<string>('')
   const [editedRagTopK, setEditedRagTopK] = useState<string>('')
-  const [hasSettingsChanges, setHasSettingsChanges] = useState(false)
-  const [savingSettings, setSavingSettings] = useState(false)
 
   // Memory section state
   const [memoryDraft, setMemoryDraft] = useState('')
@@ -100,42 +101,22 @@ export const ProjectDetail = () => {
     }
   }, [currentProject])
 
-  // Track settings changes
-  useEffect(() => {
-    if (currentProject) {
-      const nameChanged = editedName !== currentProject.name
-      const instructionsChanged = editedInstructions !== (currentProject.custom_instructions || '')
-      const modelChanged = editedDefaultModel !== (currentProject.default_model || '')
-      const tempChanged = editedTemperature !== (currentProject.temperature?.toString() ?? settings.default_temperature.toString())
-      const tokensChanged = editedMaxTokens !== (currentProject.max_tokens?.toString() ?? settings.default_max_tokens.toString())
-      const autoAttachChanged = editedAutoAttachAllFiles !== currentProject.auto_attach_all_files
-      const ragEnabledChanged = editedRagEnabled !== !!currentProject.rag_enabled
-      const ragServerChanged = editedRagServerId !== (currentProject.rag_server_id || '')
-      const ragTopKChanged = editedRagTopK !== (currentProject.rag_top_k?.toString() || '')
-      setHasSettingsChanges(
-        nameChanged ||
-          instructionsChanged ||
-          modelChanged ||
-          tempChanged ||
-          tokensChanged ||
-          autoAttachChanged ||
-          ragEnabledChanged ||
-          ragServerChanged ||
-          ragTopKChanged
-      )
+  const persistProject = async (patch: ProjectUpdate) => {
+    if (!currentProjectId || !currentProject) return
+    try {
+      const updated = await updateProject(currentProjectId, patch)
+      if (updated) {
+        setCurrentProject({ ...updated, files: currentProject.files })
+      } else {
+        showToast('Failed to save project settings', 'error')
+      }
+    } catch (err) {
+      console.error('Failed to save project:', err)
+      showToast('Failed to save project settings', 'error')
     }
-  }, [
-    editedName,
-    editedInstructions,
-    editedDefaultModel,
-    editedTemperature,
-    editedMaxTokens,
-    editedAutoAttachAllFiles,
-    editedRagEnabled,
-    editedRagServerId,
-    editedRagTopK,
-    currentProject,
-  ])
+  }
+
+  const persistDebounced = useDebouncedCallback(persistProject, AUTOSAVE_DELAY_MS)
 
   const loadProjectData = async () => {
     if (!currentProjectId) return
@@ -221,69 +202,75 @@ export const ProjectDetail = () => {
     }
   }
 
-  const handleSaveSettings = async () => {
-    if (!currentProjectId || !currentProject) return
+  // ----- Per-field autosave handlers -----
 
-    if (!editedName.trim()) {
-      showToast('Project name cannot be empty', 'warning')
-      return
-    }
+  const handleNameChange = (value: string) => {
+    setEditedName(value)
+    if (!value.trim()) return // never persist an empty project name
+    persistDebounced({ name: value.trim() })
+  }
 
-    if (editedRagEnabled) {
-      if (!editedRagServerId) {
-        showToast('Select a RAG server before enabling RAG', 'warning')
-        return
-      }
-      const k = parseInt(editedRagTopK, 10)
-      if (!Number.isFinite(k) || k < 1 || k > 50) {
-        showToast('top_k must be a number between 1 and 50', 'warning')
-        return
-      }
-    }
+  const handleInstructionsChange = (value: string) => {
+    setEditedInstructions(value)
+    persistDebounced({ custom_instructions: value.trim() || undefined })
+  }
 
-    try {
-      setSavingSettings(true)
+  const handleDefaultModelChange = (value: string) => {
+    setEditedDefaultModel(value)
+    persistDebounced.cancel()
+    persistProject({ default_model: value.trim() || undefined })
+  }
 
-      const updated = await updateProject(currentProjectId, {
-        name: editedName.trim(),
-        custom_instructions: editedInstructions.trim() || undefined,
-        default_model: editedDefaultModel.trim() || undefined,
-        temperature: editedTemperature ? parseFloat(editedTemperature) : undefined,
-        max_tokens: editedMaxTokens ? parseInt(editedMaxTokens, 10) : undefined,
-        auto_attach_all_files: editedAutoAttachAllFiles,
-        rag_enabled: editedRagEnabled,
-        rag_server_id: editedRagServerId || null,
-        rag_top_k: editedRagTopK ? parseInt(editedRagTopK, 10) : null,
-      })
-
-      if (updated) {
-        setCurrentProject({
-          ...updated,
-          files: currentProject.files,
-        })
-        setHasSettingsChanges(false)
-        showToast('Project settings saved successfully!', 'success')
-      }
-    } catch (err) {
-      console.error('Failed to save project:', err)
-      showToast('Failed to save project settings', 'error')
-    } finally {
-      setSavingSettings(false)
+  const handleTemperatureChange = (value: string) => {
+    setEditedTemperature(value)
+    if (!value) return
+    const parsed = parseFloat(value)
+    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 2) {
+      persistDebounced({ temperature: parsed })
     }
   }
 
-  const handleCancelSettings = () => {
-    if (currentProject) {
-      setEditedName(currentProject.name)
-      setEditedInstructions(currentProject.custom_instructions || '')
-      setEditedDefaultModel(currentProject.default_model || '')
-      setEditedTemperature(currentProject.temperature?.toString() ?? settings.default_temperature.toString())
-      setEditedMaxTokens(currentProject.max_tokens?.toString() ?? settings.default_max_tokens.toString())
-      setEditedAutoAttachAllFiles(currentProject.auto_attach_all_files)
-      setEditedRagEnabled(!!currentProject.rag_enabled)
-      setEditedRagServerId(currentProject.rag_server_id || '')
-      setEditedRagTopK(currentProject.rag_top_k?.toString() || '')
-      setHasSettingsChanges(false)
+  const handleMaxTokensChange = (value: string) => {
+    // Allow empty string or positive integers only (unchanged from legacy)
+    if (value !== '' && !/^[1-9]\d*$/.test(value)) return
+    setEditedMaxTokens(value)
+    if (!value) return
+    persistDebounced({ max_tokens: parseInt(value, 10) })
+  }
+
+  const handleAutoAttachAllFilesChange = (value: boolean) => {
+    setEditedAutoAttachAllFiles(value)
+    persistDebounced.cancel()
+    persistProject({ auto_attach_all_files: value })
+  }
+
+  const handleRagEnabledChange = (value: boolean) => {
+    setEditedRagEnabled(value)
+    persistDebounced.cancel()
+    persistProject({ rag_enabled: value })
+    if (value && (!editedRagServerId || !editedRagTopK)) {
+      showToast(
+        'RAG enabled. Pick a server and set top_k to start retrieving.',
+        'info',
+      )
+    }
+  }
+
+  const handleRagServerIdChange = (value: string) => {
+    setEditedRagServerId(value)
+    persistDebounced.cancel()
+    persistProject({ rag_server_id: value || null })
+  }
+
+  const handleRagTopKChange = (value: string) => {
+    setEditedRagTopK(value)
+    if (!value) {
+      persistDebounced({ rag_top_k: null })
+      return
+    }
+    const parsed = parseInt(value, 10)
+    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 50) {
+      persistDebounced({ rag_top_k: parsed })
     }
   }
 
@@ -404,7 +391,13 @@ export const ProjectDetail = () => {
     <div className="project-detail">
       <ViewHeader
         breadcrumb={
-          <button className="project-detail__home-btn" onClick={() => navigate('/')}>
+          <button
+            className="project-detail__home-btn"
+            onClick={() => {
+              persistDebounced.flush()
+              navigate('/')
+            }}
+          >
             <Icon name="home" size={16} />
             Projects
           </button>
@@ -490,7 +483,8 @@ export const ProjectDetail = () => {
                   type="text"
                   className="project-detail__input"
                   value={editedName}
-                  onChange={(e) => setEditedName(e.target.value)}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  onBlur={() => persistDebounced.flush()}
                   placeholder="Enter project name"
                   maxLength={255}
                 />
@@ -505,7 +499,8 @@ export const ProjectDetail = () => {
                   id="custom-instructions-edit"
                   className="project-detail__textarea"
                   value={editedInstructions}
-                  onChange={(e) => setEditedInstructions(e.target.value)}
+                  onChange={(e) => handleInstructionsChange(e.target.value)}
+                  onBlur={() => persistDebounced.flush()}
                   placeholder="Enter custom instructions for this project (optional)"
                   rows={6}
                 />
@@ -527,7 +522,7 @@ export const ProjectDetail = () => {
                     <span className="project-detail__label">Default Model</span>
                     <Select
                       value={editedDefaultModel}
-                      onChange={setEditedDefaultModel}
+                      onChange={handleDefaultModelChange}
                       options={defaultModelOptions}
                       aria-label="Select default model for project"
                     />
@@ -543,7 +538,8 @@ export const ProjectDetail = () => {
                       type="number"
                       className="project-detail__input"
                       value={editedTemperature}
-                      onChange={(e) => setEditedTemperature(e.target.value)}
+                      onChange={(e) => handleTemperatureChange(e.target.value)}
+                      onBlur={() => persistDebounced.flush()}
                       min="0"
                       max="2"
                       step="0.1"
@@ -561,13 +557,8 @@ export const ProjectDetail = () => {
                       type="text"
                       className="project-detail__input"
                       value={editedMaxTokens}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        // Allow empty string or positive integers only
-                        if (value === '' || /^[1-9]\d*$/.test(value)) {
-                          setEditedMaxTokens(value)
-                        }
-                      }}
+                      onChange={(e) => handleMaxTokensChange(e.target.value)}
+                      onBlur={() => persistDebounced.flush()}
                     />
                     <span className="project-detail__hint">Maximum context window size</span>
                   </div>
@@ -581,7 +572,7 @@ export const ProjectDetail = () => {
                       role="switch"
                       aria-checked={editedAutoAttachAllFiles}
                       className={`switch${editedAutoAttachAllFiles ? ' switch--on' : ''}`}
-                      onClick={() => setEditedAutoAttachAllFiles(!editedAutoAttachAllFiles)}
+                      onClick={() => handleAutoAttachAllFilesChange(!editedAutoAttachAllFiles)}
                     >
                       <span className="switch__thumb" />
                     </button>
@@ -619,7 +610,7 @@ export const ProjectDetail = () => {
                       role="switch"
                       aria-checked={editedRagEnabled}
                       className={`switch${editedRagEnabled ? ' switch--on' : ''}`}
-                      onClick={() => setEditedRagEnabled(!editedRagEnabled)}
+                      onClick={() => handleRagEnabledChange(!editedRagEnabled)}
                     >
                       <span className="switch__thumb" />
                     </button>
@@ -647,7 +638,7 @@ export const ProjectDetail = () => {
                     <>
                       <Select
                         value={editedRagServerId}
-                        onChange={setEditedRagServerId}
+                        onChange={handleRagServerIdChange}
                         options={ragServerOptions}
                         placeholder="Select a RAG server…"
                         disabled={!editedRagEnabled}
@@ -670,7 +661,8 @@ export const ProjectDetail = () => {
                     type="number"
                     className="project-detail__input"
                     value={editedRagTopK}
-                    onChange={(e) => setEditedRagTopK(e.target.value)}
+                    onChange={(e) => handleRagTopKChange(e.target.value)}
+                    onBlur={() => persistDebounced.flush()}
                     placeholder={topKPlaceholder}
                     min="1"
                     max={50}
@@ -683,28 +675,6 @@ export const ProjectDetail = () => {
                   </span>
                 </div>
               </div>
-
-              {/* Settings action buttons */}
-              {hasSettingsChanges && (
-                <div className="project-detail__settings-actions">
-                  <Button
-                    onClick={handleSaveSettings}
-                    variant="primary"
-                    size="sm"
-                    disabled={savingSettings}
-                  >
-                    {savingSettings ? 'Saving...' : 'Save Changes'}
-                  </Button>
-                  <Button
-                    onClick={handleCancelSettings}
-                    variant="secondary"
-                    size="sm"
-                    disabled={savingSettings}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              )}
           </div>
         </div>
 
