@@ -12,7 +12,22 @@ export interface Message {
   content: string
   tokens_used?: number
   attached_files?: AttachedFileInfo[]
+  rag_citations?: RagCitations | null
   created_at: string
+}
+
+export interface RagCitationHit {
+  title: string
+  section: string | null
+  score: number
+}
+
+export interface RagCitations {
+  used_dense: boolean
+  corpus: string
+  server_base_url: string
+  article_url_template: string
+  hits: RagCitationHit[]
 }
 
 export interface MessageCreate {

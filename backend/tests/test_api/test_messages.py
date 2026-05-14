@@ -20,11 +20,11 @@ import httpx
 import pytest
 from sqlalchemy import select
 
-from app.db.models import Chat, Message
+from app.db.models import Chat, Message, Project
 from app.db.session import AsyncSessionLocal
-from app.utils.exceptions import OllamaConnectionError
+from app.utils.exceptions import OllamaConnectionError, RagConnectionError
 
-from tests.conftest import FakeOllama
+from tests.conftest import FakeOllama, FakeRag
 
 
 def _parse_ndjson(text: str) -> List[dict]:
@@ -211,3 +211,275 @@ async def test_chat_not_found_emits_error_frame(
     assert len(frames) == 1
     assert frames[0]["type"] == "error"
     assert "not found" in frames[0]["message"].lower()
+
+
+# ---------- RAG-enabled streaming ----------
+
+
+async def _make_rag_chat(
+    async_client: httpx.AsyncClient,
+    *,
+    rag_enabled: bool = True,
+    rag_corpus_id: str = "simplewiki",
+    rag_top_k: int = 5,
+    rag_server_url: str = "http://rag.local:8001",
+) -> tuple[str, str]:
+    """Create a project (optionally RAG-enabled) + a chat in it. Returns (project_id, chat_id)."""
+    project = (
+        await async_client.post(
+            "/api/v1/projects",
+            json={
+                "name": "rag-stream",
+                "rag_enabled": rag_enabled,
+                "rag_server_url": rag_server_url if rag_enabled else None,
+                "rag_corpus_id": rag_corpus_id if rag_enabled else None,
+                "rag_top_k": rag_top_k if rag_enabled else None,
+            },
+        )
+    ).json()
+    chat = (
+        await async_client.post(
+            "/api/v1/chats",
+            json={"title": "rag", "model": "x:1b", "project_id": project["id"]},
+        )
+    ).json()
+    return project["id"], chat["id"]
+
+
+@pytest.mark.asyncio
+async def test_rag_hits_appear_in_system_prompt_and_citations_persist(
+    async_client: httpx.AsyncClient, fake_ollama: FakeOllama, fake_rag: FakeRag
+) -> None:
+    """
+    When the project has RAG enabled, retrieved hits land in the system message
+    and the assistant message's rag_citations column captures the metadata.
+    """
+    fake_ollama.chunks = ["ok"]
+    fake_rag.hits = [
+        {
+            "corpus": "simplewiki",
+            "chunk_id": 1,
+            "page_id": 1,
+            "title": "Photosynthesis",
+            "section": "Light reactions",
+            "chunk_index": 0,
+            "text": "Photosynthesis is the process …",
+            "text_length": 30,
+            "score": 0.5,
+        }
+    ]
+
+    project_id, chat_id = await _make_rag_chat(async_client)
+    try:
+        frames = await _read_stream(async_client, chat_id, "what is photosynthesis")
+        assert any(f.get("type") == "done" for f in frames)
+
+        # Ollama saw the retrieved chunk in its system message
+        assert len(fake_ollama.stream_calls) == 1
+        sys_msg = fake_ollama.stream_calls[0]["messages"][0]
+        assert sys_msg["role"] == "system"
+        assert "[Photosynthesis § Light reactions]" in sys_msg["content"]
+        assert "Photosynthesis is the process" in sys_msg["content"]
+
+        # RAG service was actually called with the right args
+        assert len(fake_rag.retrieve_calls) == 1
+        rcall = fake_rag.retrieve_calls[0]
+        assert rcall["corpus"] == "simplewiki"
+        assert rcall["top_k"] == 5
+        assert rcall["query"] == "what is photosynthesis"
+
+        # Citation metadata persists on the assistant message
+        async with AsyncSessionLocal() as session:
+            assistant = (
+                (
+                    await session.execute(
+                        select(Message).where(
+                            Message.chat_id == chat_id, Message.role == "assistant"
+                        )
+                    )
+                )
+                .scalars()
+                .one()
+            )
+        cites = assistant.rag_citations
+        assert cites is not None
+        assert cites["used_dense"] is True
+        assert cites["corpus"] == "simplewiki"
+        assert cites["server_base_url"] == "http://rag.local:8001"
+        assert cites["article_url_template"] == "/article/{title}"
+        assert cites["hits"][0]["title"] == "Photosynthesis"
+        assert cites["hits"][0]["section"] == "Light reactions"
+    finally:
+        await async_client.delete(f"/api/v1/projects/{project_id}")
+
+
+@pytest.mark.asyncio
+async def test_rag_used_dense_false_is_persisted(
+    async_client: httpx.AsyncClient, fake_ollama: FakeOllama, fake_rag: FakeRag
+) -> None:
+    """When the RAG server falls back to sparse-only, the flag rides along on citations."""
+    fake_ollama.chunks = ["ok"]
+    fake_rag.used_dense = False
+    fake_rag.hits = [
+        {
+            "corpus": "simplewiki",
+            "chunk_id": 1,
+            "page_id": 1,
+            "title": "X",
+            "section": None,
+            "chunk_index": 0,
+            "text": "x",
+            "text_length": 1,
+            "score": 0.1,
+        }
+    ]
+
+    project_id, chat_id = await _make_rag_chat(async_client)
+    try:
+        await _read_stream(async_client, chat_id, "q")
+        async with AsyncSessionLocal() as session:
+            assistant = (
+                (
+                    await session.execute(
+                        select(Message).where(
+                            Message.chat_id == chat_id, Message.role == "assistant"
+                        )
+                    )
+                )
+                .scalars()
+                .one()
+            )
+        assert assistant.rag_citations["used_dense"] is False
+    finally:
+        await async_client.delete(f"/api/v1/projects/{project_id}")
+
+
+@pytest.mark.asyncio
+async def test_rag_server_down_returns_503_and_skips_user_message(
+    async_client: httpx.AsyncClient, fake_ollama: FakeOllama, fake_rag: FakeRag
+) -> None:
+    """
+    RAG retrieval happens before the user-message commit. If the RAG server is
+    unreachable, the request returns 503 and NO user message is persisted.
+    """
+    fake_rag.retrieve_error = RagConnectionError("http://rag.local:8001", "refused")
+
+    project_id, chat_id = await _make_rag_chat(async_client)
+    try:
+        r = await async_client.post(
+            f"/api/v1/chats/{chat_id}/stream",
+            json={"content": "doomed query", "file_ids": None},
+        )
+        assert r.status_code == 503, r.text
+
+        async with AsyncSessionLocal() as session:
+            user_msgs = (
+                (
+                    await session.execute(
+                        select(Message).where(
+                            Message.chat_id == chat_id, Message.role == "user"
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert len(user_msgs) == 0
+        # Ollama was never called
+        assert len(fake_ollama.stream_calls) == 0
+    finally:
+        await async_client.delete(f"/api/v1/projects/{project_id}")
+
+
+@pytest.mark.asyncio
+async def test_rag_enabled_with_incomplete_config_returns_400(
+    async_client: httpx.AsyncClient, fake_ollama: FakeOllama, fake_rag: FakeRag
+) -> None:
+    """
+    RAG enabled but a required config field is missing → 400 before the LLM call.
+    Simulated by enabling RAG via PATCH but clearing the corpus afterwards via DB.
+    """
+    project_id, chat_id = await _make_rag_chat(async_client)
+    try:
+        # Clear required field directly to bypass schema validation
+        async with AsyncSessionLocal() as session:
+            project = (
+                await session.execute(select(Project).where(Project.id == project_id))
+            ).scalar_one()
+            project.rag_corpus_id = None
+            await session.commit()
+
+        r = await async_client.post(
+            f"/api/v1/chats/{chat_id}/stream",
+            json={"content": "anything", "file_ids": None},
+        )
+        assert r.status_code == 400
+        assert "RAG is enabled" in r.json()["detail"]
+        assert len(fake_ollama.stream_calls) == 0
+    finally:
+        await async_client.delete(f"/api/v1/projects/{project_id}")
+
+
+@pytest.mark.asyncio
+async def test_rag_disabled_behaves_like_baseline(
+    async_client: httpx.AsyncClient,
+    test_chat: Chat,
+    fake_ollama: FakeOllama,
+    fake_rag: FakeRag,
+) -> None:
+    """A chat with no RAG-enabled project never touches the RAG service."""
+    fake_ollama.chunks = ["ok"]
+    frames = await _read_stream(async_client, test_chat.id, "no rag here")
+    assert any(f.get("type") == "done" for f in frames)
+    assert fake_rag.retrieve_calls == []
+    assert fake_rag.get_info_calls == []
+
+    async with AsyncSessionLocal() as session:
+        assistant = (
+            (
+                await session.execute(
+                    select(Message).where(
+                        Message.chat_id == test_chat.id, Message.role == "assistant"
+                    )
+                )
+            )
+            .scalars()
+            .one()
+        )
+    assert assistant.rag_citations is None
+
+
+@pytest.mark.asyncio
+async def test_rag_dedupes_hits_by_page_id(
+    async_client: httpx.AsyncClient, fake_ollama: FakeOllama, fake_rag: FakeRag
+) -> None:
+    """Multiple hits sharing a page_id collapse to at most 2 per page."""
+    fake_ollama.chunks = ["ok"]
+    # 3 hits all from page_id=1, plus 1 from page_id=2 → expect 2 + 1 = 3 deduped
+    fake_rag.hits = [
+        {
+            "corpus": "simplewiki", "chunk_id": i, "page_id": pid,
+            "title": f"T{pid}", "section": f"s{i}", "chunk_index": i,
+            "text": f"chunk-{i}", "text_length": 8, "score": 1.0 - i * 0.1,
+        }
+        for i, pid in enumerate([1, 1, 1, 2])
+    ]
+
+    project_id, chat_id = await _make_rag_chat(async_client, rag_top_k=10)
+    try:
+        await _read_stream(async_client, chat_id, "q")
+        async with AsyncSessionLocal() as session:
+            assistant = (
+                (
+                    await session.execute(
+                        select(Message).where(
+                            Message.chat_id == chat_id, Message.role == "assistant"
+                        )
+                    )
+                )
+                .scalars()
+                .one()
+            )
+        assert len(assistant.rag_citations["hits"]) == 3
+    finally:
+        await async_client.delete(f"/api/v1/projects/{project_id}")

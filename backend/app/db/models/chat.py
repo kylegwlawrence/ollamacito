@@ -5,7 +5,7 @@ import uuid
 from typing import List, Optional
 
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -87,6 +87,12 @@ class Message(Base, TimestampMixin):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     tokens_used: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     truncated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # RAG citation metadata (only populated on assistant messages where RAG ran).
+    # Shape: {used_dense, corpus, server_base_url, article_url_template, hits: [{title, section, score}]}
+    # server_base_url + article_url_template are denormalized onto the message so
+    # citation links keep resolving even if the project's RAG config changes later.
+    rag_citations: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")

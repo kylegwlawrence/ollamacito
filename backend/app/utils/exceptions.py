@@ -54,3 +54,36 @@ class ValidationException(Exception):
 
     def __init__(self, message: str):
         super().__init__(message)
+
+
+class RagException(Exception):
+    """Base exception for RAG-server-related errors."""
+
+    pass
+
+
+class RagConnectionError(RagException):
+    """Raised when unable to reach the configured RAG server."""
+
+    def __init__(self, url: str, detail: str = ""):
+        self.url = url
+        self.detail = detail
+        super().__init__(f"Unable to reach RAG server at {url}: {detail}")
+
+
+class RagCorpusNotFoundError(RagException):
+    """Raised when the requested corpus is not available on the RAG server."""
+
+    def __init__(self, corpus: str, url: str = ""):
+        self.corpus = corpus
+        self.url = url
+        super().__init__(f"RAG corpus '{corpus}' not found on server {url}")
+
+
+class RagValidationError(RagException):
+    """Raised when the RAG server rejects the request payload (422)."""
+
+    def __init__(self, detail: str, url: str = ""):
+        self.detail = detail
+        self.url = url
+        super().__init__(f"RAG server validation error: {detail}")

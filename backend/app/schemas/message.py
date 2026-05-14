@@ -2,7 +2,7 @@
 Pydantic schemas for Message API.
 """
 from datetime import datetime
-from typing import Optional, List
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -41,6 +41,13 @@ class MessageResponse(MessageBase):
     tokens_used: Optional[int] = None
     truncated: bool = False
     attached_files: List[AttachedFileInfo] = Field(default_factory=list)
+    rag_citations: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "RAG citation metadata for assistant messages where retrieval ran. "
+            "Shape: {used_dense, corpus, server_base_url, article_url_template, hits: [{title, section, score}]}"
+        ),
+    )
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProjectBase(BaseModel):
@@ -32,6 +32,33 @@ class ProjectBase(BaseModel):
             "file_ids on each request; this flag is a UX hint only."
         ),
     )
+    rag_enabled: bool = Field(
+        default=False,
+        description="When true, the backend retrieves context from the configured RAG server on every user message.",
+    )
+    rag_server_url: Optional[str] = Field(
+        None,
+        max_length=512,
+        description="Base URL of the RAG server (e.g. http://127.0.0.1:8001).",
+    )
+    rag_corpus_id: Optional[str] = Field(
+        None,
+        max_length=100,
+        description="ID of the corpus to query (e.g. simplewiki).",
+    )
+    rag_top_k: Optional[int] = Field(
+        None,
+        ge=1,
+        le=50,
+        description="Number of chunks to request per query.",
+    )
+
+    @field_validator("rag_server_url")
+    @classmethod
+    def _strip_trailing_slash(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return value.rstrip("/") or None
 
 
 class ProjectCreate(ProjectBase):
@@ -50,6 +77,28 @@ class ProjectUpdate(BaseModel):
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(None, gt=0)
     auto_attach_all_files: Optional[bool] = None
+    rag_enabled: Optional[bool] = None
+    rag_server_url: Optional[str] = Field(None, max_length=512)
+    rag_corpus_id: Optional[str] = Field(None, max_length=100)
+    rag_top_k: Optional[int] = Field(None, ge=1, le=50)
+
+    @field_validator("rag_server_url")
+    @classmethod
+    def _strip_trailing_slash(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return value.rstrip("/") or None
+
+
+class RagInfoRequest(BaseModel):
+    """Body for POST /projects/{id}/rag/info — used by the 'Test connection' button."""
+
+    rag_server_url: str = Field(..., min_length=1, max_length=512)
+
+    @field_validator("rag_server_url")
+    @classmethod
+    def _strip_trailing_slash(cls, value: str) -> str:
+        return value.rstrip("/")
 
 
 class ProjectFileResponse(BaseModel):

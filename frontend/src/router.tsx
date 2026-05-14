@@ -12,7 +12,6 @@ import { ToastContainer } from './components/common/ToastContainer'
 import { Sidebar } from './components/sidebar/Sidebar'
 import { ChatContainer } from './components/chat/ChatContainer'
 import { ProjectDetail } from './components/projects/ProjectDetail'
-import { ProjectSettings } from './components/projects/ProjectSettings'
 import { AppSettings } from './components/settings/AppSettings'
 
 /**
@@ -52,7 +51,6 @@ export const router = createBrowserRouter([
       { index: true, element: <ChatContainer /> },
       { path: 'chats/:chatId', element: <ChatContainer /> },
       { path: 'projects/:projectId', element: <ProjectDetail /> },
-      { path: 'projects/:projectId/settings', element: <ProjectSettings /> },
       { path: 'settings', element: <AppSettings /> },
     ],
   },

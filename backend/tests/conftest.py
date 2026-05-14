@@ -23,6 +23,7 @@ from app.db.models import DEFAULT_USER_ID, Chat
 from app.db.session import AsyncSessionLocal
 from app.main import app
 from app.services import ollama_service as ollama_module
+from app.services import rag_service as rag_module
 
 
 @pytest.fixture(scope="session")
@@ -136,4 +137,73 @@ def fake_ollama(monkeypatch: pytest.MonkeyPatch) -> FakeOllama:
     real = ollama_module.ollama_service
     monkeypatch.setattr(real, "stream_chat", fake.stream_chat)
     monkeypatch.setattr(real, "generate_chat_title", fake.generate_chat_title)
+    return fake
+
+
+_DEFAULT_RAG_INFO = {
+    "server_name": "test-rag",
+    "server_version": "0.0.1",
+    "description": "fake RAG server for tests",
+    "embedding_model": "nomic-embed-text",
+    "embedding_dim": 768,
+    "default_top_k": 5,
+    "max_top_k": 50,
+    "article_url_template": "/article/{title}",
+    "corpora": [
+        {"id": "simplewiki", "display_name": "Simple", "article_count": 100},
+    ],
+}
+
+
+class FakeRag:
+    """Replacement for the rag_service singleton in tests.
+
+    Configure behavior by setting attributes:
+        - info: dict returned by get_info (defaults to a minimal server payload)
+        - hits: list of hit dicts returned by retrieve
+        - used_dense: bool flag returned alongside the hits
+        - info_error / retrieve_error: exception to raise instead of returning
+
+    Inspect after-the-fact:
+        - get_info_calls: list of base_urls passed in
+        - retrieve_calls: list of {base_url, query, corpus, top_k} dicts
+    """
+
+    def __init__(self) -> None:
+        self.info: Dict[str, Any] = dict(_DEFAULT_RAG_INFO)
+        self.hits: List[Dict[str, Any]] = []
+        self.used_dense: bool = True
+        self.info_error: Optional[Exception] = None
+        self.retrieve_error: Optional[Exception] = None
+        self.get_info_calls: List[str] = []
+        self.retrieve_calls: List[Dict[str, Any]] = []
+
+    async def get_info(self, base_url: str) -> Dict[str, Any]:
+        self.get_info_calls.append(base_url)
+        if self.info_error is not None:
+            raise self.info_error
+        return dict(self.info)
+
+    async def retrieve(
+        self,
+        base_url: str,
+        query: str,
+        corpus: str,
+        top_k: int,
+    ) -> Dict[str, Any]:
+        self.retrieve_calls.append(
+            {"base_url": base_url, "query": query, "corpus": corpus, "top_k": top_k}
+        )
+        if self.retrieve_error is not None:
+            raise self.retrieve_error
+        return {"used_dense": self.used_dense, "hits": list(self.hits)}
+
+
+@pytest.fixture
+def fake_rag(monkeypatch: pytest.MonkeyPatch) -> FakeRag:
+    """Replace the rag_service singleton's methods with FakeRag."""
+    fake = FakeRag()
+    real = rag_module.rag_service
+    monkeypatch.setattr(real, "get_info", fake.get_info)
+    monkeypatch.setattr(real, "retrieve", fake.retrieve)
     return fake

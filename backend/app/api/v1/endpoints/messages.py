@@ -17,7 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_chat_or_404, get_current_user, get_db
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.db.models import Chat, ChatSettings, Message, Project, ProjectFile, Settings, User
+from app.db.models import (
+    Chat,
+    ChatSettings,
+    Message,
+    Project,
+    ProjectFile,
+    Settings,
+    User,
+)
 from app.db.session import AsyncSessionLocal
 from app.schemas.message import (
     MessageCreate,
@@ -26,6 +34,7 @@ from app.schemas.message import (
     StreamMessageRequest,
 )
 from app.services.ollama_service import ollama_service
+from app.services.rag_service import rag_service
 from app.utils.exceptions import OllamaConnectionError
 
 router = APIRouter()
@@ -109,21 +118,62 @@ async def _load_cascade(session: AsyncSession, chat: Chat) -> _Cascade:
     )
 
 
+def _format_rag_context(rag_response: Dict) -> str:
+    """
+    Build the system-prompt block for RAG-retrieved chunks.
+
+    Header format `[Title]` or `[Title § Section]` is required (the embedder
+    saw these headers during indexing). See LOCAL_WIKIPEDIA_API.md §
+    "Prompt assembly pattern that works".
+    """
+    corpus = rag_response.get("corpus", "")
+    hits = rag_response.get("hits", [])
+    if not hits:
+        return ""
+
+    blocks: List[str] = []
+    for hit in hits:
+        header = hit.get("title", "(untitled)")
+        section = hit.get("section")
+        if section:
+            header = f"{header} § {section}"
+        text = hit.get("text", "")
+        blocks.append(f"[{header}]\n{text}")
+
+    body = "\n\n---\n\n".join(blocks)
+    return (
+        f"RETRIEVED CONTEXT (from {corpus}):\n\n"
+        f"{body}\n\n"
+        "Use only this context to answer the user's question. "
+        "Cite sources by their bracketed title. If the answer isn't in the context, say so."
+    )
+
+
 async def _build_ollama_messages(
     session: AsyncSession,
     chat: Chat,
     user_message_content: str,
     attached_files: List[ProjectFile],
+    project: Optional[Project] = None,
+    rag_response: Optional[Dict] = None,
 ) -> List[Dict[str, str]]:
     """
     Build the message list for Ollama: system prompt (project custom
-    instructions + ONLY the explicitly-attached project files) + chat
-    history + the new user message.
+    instructions + RAG retrieved context + ONLY the explicitly-attached
+    project files) + chat history + the new user message.
 
     `attached_files` is the pre-resolved, pre-ownership-checked set of
     project files the user selected for this turn. The caller is
     responsible for verifying that each file belongs to the chat's
     project (see `_resolve_attached_files`).
+
+    `project` is passed in by the caller to avoid a redundant SELECT —
+    the caller already loaded it for the RAG-config check. If None and the
+    chat is in a project, it's loaded here.
+
+    `rag_response` is the post-dedup retrieve payload `{used_dense, corpus, hits}`.
+    When present, its `hits` are formatted as `[Title § Section]\\nchunk` blocks
+    in the system prompt.
     """
     # Load chat history
     history_query = (
@@ -139,13 +189,20 @@ async def _build_ollama_messages(
     # Build system prompt
     system_prompt_parts: List[str] = []
 
-    if chat.project_id:
+    if chat.project_id and project is None:
         project = (
             await session.execute(select(Project).where(Project.id == chat.project_id))
         ).scalar_one_or_none()
-        if project and project.custom_instructions:
-            system_prompt_parts.append("Project Context:")
-            system_prompt_parts.append(project.custom_instructions)
+
+    if project and project.custom_instructions:
+        system_prompt_parts.append("Project Context:")
+        system_prompt_parts.append(project.custom_instructions)
+        system_prompt_parts.append("")
+
+    if rag_response and rag_response.get("hits"):
+        rag_block = _format_rag_context(rag_response)
+        if rag_block:
+            system_prompt_parts.append(rag_block)
             system_prompt_parts.append("")
 
     if attached_files:
@@ -167,6 +224,88 @@ async def _build_ollama_messages(
 
     ollama_messages.append({"role": "user", "content": user_message_content})
     return ollama_messages
+
+
+def _dedupe_hits_by_page(hits: List[Dict], keep_per_page: int = 2) -> List[Dict]:
+    """
+    Deduplicate retrieved hits by `page_id`, keeping at most `keep_per_page` per page.
+    Pattern from LOCAL_WIKIPEDIA_API.md § "Deduplication and reranking".
+    """
+    seen: Dict[int, int] = {}
+    out: List[Dict] = []
+    for hit in hits:
+        page_id = hit.get("page_id")
+        if page_id is None:
+            out.append(hit)
+            continue
+        count = seen.get(page_id, 0)
+        if count < keep_per_page:
+            out.append(hit)
+            seen[page_id] = count + 1
+    return out
+
+
+async def _maybe_retrieve_rag(
+    project: Optional[Project], user_message: str
+) -> Tuple[Optional[Dict], Optional[Dict]]:
+    """
+    If the project has RAG enabled, fetch /rag/info and /rag/retrieve in parallel
+    and return (prompt_payload, citations_meta).
+
+    prompt_payload   shape: {used_dense, corpus, hits: [full hit dicts incl. text]}
+    citations_meta   shape persisted to Message.rag_citations:
+                     {used_dense, corpus, server_base_url, article_url_template,
+                      hits: [{title, section, score}]}
+
+    Returns (None, None) when RAG isn't enabled. Raises HTTPException(400) when
+    enabled with incomplete config. Lets Rag* exceptions propagate (handled by
+    the exception handlers in main.py).
+    """
+    if project is None or not project.rag_enabled:
+        return None, None
+
+    if not (project.rag_server_url and project.rag_corpus_id and project.rag_top_k):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "RAG is enabled on this project but configuration is incomplete "
+                "(server URL, corpus, or top_k is missing). Open project settings to fix."
+            ),
+        )
+
+    base_url = project.rag_server_url
+    corpus = project.rag_corpus_id
+    top_k = project.rag_top_k
+
+    info, retrieve = await asyncio.gather(
+        rag_service.get_info(base_url),
+        rag_service.retrieve(base_url=base_url, query=user_message, corpus=corpus, top_k=top_k),
+    )
+
+    raw_hits = retrieve.get("hits", []) or []
+    deduped = _dedupe_hits_by_page(raw_hits, keep_per_page=2)[:top_k]
+    used_dense = bool(retrieve.get("used_dense", False))
+
+    prompt_payload = {
+        "used_dense": used_dense,
+        "corpus": corpus,
+        "hits": deduped,
+    }
+    citations_meta = {
+        "used_dense": used_dense,
+        "corpus": corpus,
+        "server_base_url": base_url,
+        "article_url_template": info.get("article_url_template", "/article/{title}"),
+        "hits": [
+            {
+                "title": h.get("title", ""),
+                "section": h.get("section"),
+                "score": h.get("score", 0.0),
+            }
+            for h in deduped
+        ],
+    }
+    return prompt_payload, citations_meta
 
 
 async def _resolve_attached_files(
@@ -358,15 +497,25 @@ async def _prepare_stream(
     user_id: UUID,
     user_message: str,
     file_ids: Optional[List[UUID]],
-) -> Tuple[Optional[Chat], Optional[_Cascade], Optional[List[Dict[str, str]]], Optional[str]]:
+) -> Tuple[
+    Optional[Chat],
+    Optional[_Cascade],
+    Optional[List[Dict[str, str]]],
+    Optional[str],
+    Optional[Dict],
+]:
     """
     Open a setup session, load cascade + history, resolve attached files,
-    persist the user message (and message_files junction rows) in one
-    transaction.
+    optionally retrieve RAG context, persist the user message (and
+    message_files junction rows) in one transaction.
 
     The user-message commit lives in its own transaction so it survives any
     later Ollama stream failure. Returns (None, ...) when the chat does not
     exist or does not belong to the requesting user.
+
+    RAG retrieval happens BEFORE the user-message commit so that a RAG-server
+    failure surfaces as a regular HTTP error response (503/422) without
+    half-committing state.
     """
     async with AsyncSessionLocal() as session:
         chat = (
@@ -375,7 +524,7 @@ async def _prepare_stream(
             )
         ).scalar_one_or_none()
         if not chat:
-            return None, None, None, None
+            return None, None, None, None, None
 
         cascade = await _load_cascade(session, chat)
         attached_files = await _resolve_attached_files(session, chat, file_ids)
@@ -391,8 +540,33 @@ async def _prepare_stream(
             )
         else:
             logger.info("No files attached to chat %s for this turn", chat_id)
+
+        project: Optional[Project] = None
+        if chat.project_id:
+            project = (
+                await session.execute(
+                    select(Project).where(Project.id == chat.project_id)
+                )
+            ).scalar_one_or_none()
+
+        rag_prompt_payload, rag_citations_meta = await _maybe_retrieve_rag(
+            project, user_message
+        )
+        if rag_citations_meta is not None:
+            logger.info(
+                "RAG retrieved %d hits (used_dense=%s) for chat %s",
+                len(rag_citations_meta["hits"]),
+                rag_citations_meta["used_dense"],
+                chat_id,
+            )
+
         ollama_messages = await _build_ollama_messages(
-            session, chat, user_message, attached_files
+            session,
+            chat,
+            user_message,
+            attached_files,
+            project=project,
+            rag_response=rag_prompt_payload,
         )
 
         new_user_message = Message(
@@ -406,11 +580,14 @@ async def _prepare_stream(
 
         model_name = chat.model
 
-    return chat, cascade, ollama_messages, model_name
+    return chat, cascade, ollama_messages, model_name, rag_citations_meta
 
 
 async def _persist_assistant_message(
-    chat_id: UUID, content: str, truncated: bool
+    chat_id: UUID,
+    content: str,
+    truncated: bool,
+    rag_citations: Optional[Dict] = None,
 ) -> int:
     """
     Save the assistant message in its own transaction and return the post-save
@@ -422,6 +599,7 @@ async def _persist_assistant_message(
             role="assistant",
             content=content,
             truncated=truncated,
+            rag_citations=rag_citations,
         )
         session.add(assistant_message)
         await session.commit()
@@ -473,7 +651,7 @@ async def stream_chat_response(
         f"message: '{body.content[:50]}...'"
     )
 
-    chat, cascade, ollama_messages, model_name = await _prepare_stream(
+    chat, cascade, ollama_messages, model_name, rag_citations = await _prepare_stream(
         chat_id, current_user.id, body.content, body.file_ids
     )
 
@@ -526,7 +704,7 @@ async def stream_chat_response(
         try:
             if full_response:
                 assistant_count = await _persist_assistant_message(
-                    chat_id, full_response, is_truncated
+                    chat_id, full_response, is_truncated, rag_citations
                 )
                 logger.info(
                     f"[Req {request_id}] Persisted assistant message "

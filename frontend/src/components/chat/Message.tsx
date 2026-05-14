@@ -1,11 +1,62 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { formatDate } from '@/utils/formatters'
-import type { Message as MessageType } from '@/types'
+import type { Message as MessageType, RagCitations } from '@/types'
 import './Message.css'
 
 interface MessageProps {
   message: MessageType
+}
+
+// Build an article URL preserving slashes in the title but encoding everything else.
+// Per LOCAL_WIKIPEDIA_API.md, FastAPI's {title:path} converter requires slashes to
+// remain unencoded (e.g. "AC/DC") while spaces / ? / # / & must be encoded.
+const buildArticleUrl = (
+  baseUrl: string,
+  template: string,
+  title: string
+): string => {
+  const encodedTitle = encodeURIComponent(title).replace(/%2F/g, '/')
+  const path = template.replace('{title}', encodedTitle)
+  return baseUrl.replace(/\/$/, '') + path
+}
+
+const Sources = ({ citations }: { citations: RagCitations }) => {
+  if (!citations.hits || citations.hits.length === 0) return null
+  return (
+    <div className="message__sources">
+      <div className="message__sources-header">
+        <span className="message__sources-title">Sources</span>
+        {!citations.used_dense && (
+          <span
+            className="message__sources-badge"
+            title="Semantic search was unavailable on the RAG server; results are keyword-only."
+          >
+            keyword-only
+          </span>
+        )}
+      </div>
+      <ul className="message__sources-list">
+        {citations.hits.map((hit, i) => (
+          <li key={i} className="message__sources-item">
+            <a
+              className="message__sources-link"
+              href={buildArticleUrl(
+                citations.server_base_url,
+                citations.article_url_template,
+                hit.title
+              )}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {hit.title}
+              {hit.section ? ` § ${hit.section}` : ''}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 export const Message = ({ message }: MessageProps) => {
@@ -40,6 +91,7 @@ export const Message = ({ message }: MessageProps) => {
         <div className="message__text">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         </div>
+        {message.rag_citations && <Sources citations={message.rag_citations} />}
         <div className="message__meta">
           <span className="message__time">{formatDate(message.created_at)}</span>
           {message.tokens_used && (

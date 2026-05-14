@@ -5,13 +5,13 @@ import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from alembic import command
-from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
+from alembic import command
+from alembic.config import Config as AlembicConfig
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
@@ -23,6 +23,9 @@ from app.utils.exceptions import (
     ChatNotFoundException,
     OllamaConnectionError,
     OllamaModelNotFoundError,
+    RagConnectionError,
+    RagCorpusNotFoundError,
+    RagValidationError,
 )
 
 # Setup logging
@@ -191,6 +194,48 @@ async def chat_not_found_handler(request, exc: ChatNotFoundException):
         content={
             "error": "Chat Not Found",
             "detail": f"Chat with ID '{exc.chat_id}' does not exist",
+        },
+    )
+
+
+@app.exception_handler(RagConnectionError)
+async def rag_connection_error_handler(request, exc: RagConnectionError):
+    """Handle RAG-server connection errors."""
+    logger.error(f"RAG connection error: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "error": "RAG Service Unavailable",
+            "detail": str(exc),
+            "url": exc.url,
+            "suggestion": "Check the project's RAG server URL and that the server is running",
+        },
+    )
+
+
+@app.exception_handler(RagCorpusNotFoundError)
+async def rag_corpus_not_found_handler(request, exc: RagCorpusNotFoundError):
+    """Handle RAG corpus-not-found errors."""
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": "RAG Corpus Not Found",
+            "detail": f"Corpus '{exc.corpus}' is not available on the RAG server",
+            "url": exc.url,
+            "suggestion": "Re-test the RAG connection and pick a corpus the server reports",
+        },
+    )
+
+
+@app.exception_handler(RagValidationError)
+async def rag_validation_error_handler(request, exc: RagValidationError):
+    """Handle RAG-server validation errors (422)."""
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": "RAG Validation Error",
+            "detail": exc.detail,
+            "url": exc.url,
         },
     )
 

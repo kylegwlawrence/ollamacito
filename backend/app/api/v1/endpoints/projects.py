@@ -20,7 +20,9 @@ from app.schemas.project import (
     ProjectResponse,
     ProjectUpdate,
     ProjectWithDetails,
+    RagInfoRequest,
 )
+from app.services.rag_service import rag_service
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -65,6 +67,10 @@ async def list_projects(
                 "temperature": project.temperature,
                 "max_tokens": project.max_tokens,
                 "auto_attach_all_files": project.auto_attach_all_files,
+                "rag_enabled": project.rag_enabled,
+                "rag_server_url": project.rag_server_url,
+                "rag_corpus_id": project.rag_corpus_id,
+                "rag_top_k": project.rag_top_k,
                 "is_archived": project.is_archived,
                 "created_at": project.created_at,
                 "updated_at": project.updated_at,
@@ -122,6 +128,10 @@ async def get_project(
         temperature=project_with_details.temperature,
         max_tokens=project_with_details.max_tokens,
         auto_attach_all_files=project_with_details.auto_attach_all_files,
+        rag_enabled=project_with_details.rag_enabled,
+        rag_server_url=project_with_details.rag_server_url,
+        rag_corpus_id=project_with_details.rag_corpus_id,
+        rag_top_k=project_with_details.rag_top_k,
         is_archived=project_with_details.is_archived,
         created_at=project_with_details.created_at,
         updated_at=project_with_details.updated_at,
@@ -147,6 +157,10 @@ async def create_project(
             temperature=project_data.temperature,
             max_tokens=project_data.max_tokens,
             auto_attach_all_files=project_data.auto_attach_all_files,
+            rag_enabled=project_data.rag_enabled,
+            rag_server_url=project_data.rag_server_url,
+            rag_corpus_id=project_data.rag_corpus_id,
+            rag_top_k=project_data.rag_top_k,
         )
         db.add(new_project)
         await db.flush()
@@ -162,6 +176,10 @@ async def create_project(
             temperature=new_project.temperature,
             max_tokens=new_project.max_tokens,
             auto_attach_all_files=new_project.auto_attach_all_files,
+            rag_enabled=new_project.rag_enabled,
+            rag_server_url=new_project.rag_server_url,
+            rag_corpus_id=new_project.rag_corpus_id,
+            rag_top_k=new_project.rag_top_k,
             is_archived=new_project.is_archived,
             created_at=new_project.created_at,
             updated_at=new_project.updated_at,
@@ -194,10 +212,13 @@ async def update_project(
     Returns:
         ProjectResponse: Updated project
     """
-    # Update fields
+    # Update fields. For nullable string fields we use the request's `model_fields_set`
+    # so the caller can explicitly clear (set to null) versus omit (leave unchanged).
+    fields_set = project_data.model_fields_set
+
     if project_data.name is not None:
         project.name = project_data.name
-    if project_data.custom_instructions is not None:
+    if "custom_instructions" in fields_set:
         project.custom_instructions = project_data.custom_instructions
     if project_data.is_archived is not None:
         project.is_archived = project_data.is_archived
@@ -209,6 +230,14 @@ async def update_project(
         project.max_tokens = project_data.max_tokens
     if project_data.auto_attach_all_files is not None:
         project.auto_attach_all_files = project_data.auto_attach_all_files
+    if project_data.rag_enabled is not None:
+        project.rag_enabled = project_data.rag_enabled
+    if "rag_server_url" in fields_set:
+        project.rag_server_url = project_data.rag_server_url
+    if "rag_corpus_id" in fields_set:
+        project.rag_corpus_id = project_data.rag_corpus_id
+    if "rag_top_k" in fields_set:
+        project.rag_top_k = project_data.rag_top_k
 
     await db.flush()
     await db.refresh(project)
@@ -232,6 +261,10 @@ async def update_project(
         temperature=project.temperature,
         max_tokens=project.max_tokens,
         auto_attach_all_files=project.auto_attach_all_files,
+        rag_enabled=project.rag_enabled,
+        rag_server_url=project.rag_server_url,
+        rag_corpus_id=project.rag_corpus_id,
+        rag_top_k=project.rag_top_k,
         is_archived=project.is_archived,
         created_at=project.created_at,
         updated_at=project.updated_at,
@@ -437,6 +470,28 @@ async def get_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving file",
         )
+
+
+@router.post("/{project_id}/rag/info")
+async def get_rag_info(
+    body: RagInfoRequest,
+    project: Project = Depends(get_project_or_404),
+):
+    """
+    Proxy a GET /rag/info call to the supplied RAG server URL.
+
+    Used by the "Test connection" button in project settings: the user types
+    a URL, we call the server, and return its info payload so the UI can
+    populate the corpus dropdown. The URL is taken from the request body
+    (not from the project) so the user can validate before saving.
+
+    Connection failures surface as 503 via the RagConnectionError handler.
+    """
+    info = await rag_service.get_info(body.rag_server_url)
+    logger.info(
+        f"Fetched RAG /info for project {project.id} from {body.rag_server_url}"
+    )
+    return info
 
 
 @router.delete("/{project_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)

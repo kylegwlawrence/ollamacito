@@ -45,6 +45,16 @@ class Project(Base, TimestampMixin):
         Boolean, default=False, nullable=False
     )
 
+    # External RAG-server integration (per-project). See LOCAL_WIKIPEDIA_API.md.
+    # When rag_enabled is true, the backend calls /rag/retrieve on rag_server_url
+    # for every user message in this project's chats and injects the hits into
+    # the system prompt. The three config fields must all be non-null when
+    # rag_enabled is true; the request layer rejects half-configured projects.
+    rag_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    rag_server_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    rag_corpus_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    rag_top_k: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="projects")
     chats: Mapped[List["Chat"]] = relationship(
@@ -68,6 +78,10 @@ class Project(Base, TimestampMixin):
         CheckConstraint(
             "max_tokens IS NULL OR max_tokens > 0",
             name="positive_project_tokens",
+        ),
+        CheckConstraint(
+            "rag_top_k IS NULL OR (rag_top_k BETWEEN 1 AND 50)",
+            name="valid_project_rag_top_k",
         ),
     )
 
