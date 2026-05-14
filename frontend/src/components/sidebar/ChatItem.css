@@ -9,10 +9,11 @@
   position: relative;
   min-height: 32px;
   justify-content: center;
+  background: var(--surf-2);
 }
 
 .chat-item:hover {
-  background: var(--surf-2);
+  background: var(--surf-3);
 }
 
 .chat-item--active {
