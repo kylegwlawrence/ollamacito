@@ -1,131 +1,21 @@
 .message-input {
-  padding: 1rem;
-  border-top: 1px solid var(--border-color);
-  background-color: var(--bg-secondary);
+  padding: var(--s-3) var(--s-4) var(--s-4);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  position: relative;
+  gap: var(--s-2);
 }
 
-.message-input__textarea {
-  flex: 1;
-  padding: 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 1rem;
-  resize: vertical;
-  min-height: 60px;
-  max-height: 200px;
-}
-
-.message-input__textarea:focus {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 2px;
-}
-
-.message-input__textarea:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.message-input__stop-button {
-  background-color: var(--error-color);
-  border-color: var(--error-color);
-  color: white;
-  font-weight: 600;
-  min-width: 80px;
-}
-
-.message-input__stop-button:hover {
-  background-color: #dc2626;
-  border-color: #dc2626;
-  opacity: 0.9;
-}
-
-.message-input__controls {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-end;
-  width: 100%;
-}
-
-.message-input__buttons {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-/* Project Files Info Badge */
-.message-input__project-files-info {
-  padding: 0.5rem 0.75rem;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.message-input__files-badge {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-/* Selected Files Chips */
-.message-input__selected-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-}
-
-.message-input__file-chip {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.375rem 0.75rem;
-  background: var(--accent-color);
-  color: white;
-  border: none;
-  border-radius: 16px;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.message-input__file-chip:hover {
-  opacity: 0.8;
-}
-
-.message-input__file-chip-remove {
-  font-size: 1.25rem;
-  font-weight: bold;
-  line-height: 1;
-}
-
-/* Phase 6 — per-message file chip selector */
+/* File picker row above the pill */
 .message-input__file-picker {
-  padding: 0.5rem 0.75rem;
-  border-top: 1px solid var(--border-color, #2a2a2a);
-  background: var(--bg-secondary, transparent);
+  padding: 0 var(--s-2) var(--s-1);
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--s-1);
 }
 
 .message-input__file-picker-label {
-  font-size: 0.75rem;
-  color: var(--text-secondary, #888);
+  font-size: var(--fs-caption);
+  color: var(--on-surf-2);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -133,33 +23,77 @@
 .message-input__file-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.375rem;
+  gap: var(--s-1);
 }
 
 .message-input__file-chip {
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.625rem;
-  border: 1px solid var(--border-color, #2a2a2a);
-  border-radius: 999px;
+  gap: var(--s-1);
+  padding: 2px var(--s-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-pill);
   background: transparent;
-  color: var(--text-primary, #eee);
-  font-size: 0.8125rem;
+  color: var(--on-surf-1);
+  font-size: var(--fs-body-sm);
+  font-family: inherit;
   cursor: pointer;
-  transition: background-color 0.15s, border-color 0.15s;
+  transition: background-color var(--dur-fast) var(--ease-std), border-color var(--dur-fast) var(--ease-std), color var(--dur-fast) var(--ease-std);
 }
 
 .message-input__file-chip:hover:not(:disabled) {
-  border-color: var(--accent-color, #4a9eff);
+  border-color: var(--brand);
 }
 
 .message-input__file-chip--selected {
-  background: var(--accent-color, #4a9eff);
-  border-color: var(--accent-color, #4a9eff);
-  color: #fff;
+  background: var(--brand-tint);
+  border-color: var(--brand);
+  color: var(--brand);
 }
 
 .message-input__file-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Floating pill composer */
+.message-input__pill {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+  background: var(--surf-2);
+  border-radius: var(--r-xl);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-5);
+  box-shadow: var(--elev-2);
+}
+
+.message-input__textarea {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--on-surf-0);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  resize: none;
+  min-height: 60px;
+  max-height: 200px;
+  outline: none;
+  padding: var(--s-2) 0;
+  line-height: 1.5;
+}
+
+.message-input__textarea::placeholder {
+  color: var(--on-surf-dim);
+}
+
+.message-input__textarea:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.message-input__send-area {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding-bottom: var(--s-1);
 }

@@ -1,70 +1,135 @@
-/* Dark Mode Only - CSS Variables */
+/* Design System Tokens — dark theme only */
 
 :root {
-  /* Dark Mode Colors */
-  --bg-primary: #1a1d24;
-  --bg-secondary: #242933;
-  --bg-tertiary: #2d3340;
-  --bg-hover: #343a48;
+  /* Surfaces */
+  --surf-0: #15171C;
+  --surf-1: #1B1E25;
+  --surf-2: #232732;
+  --surf-3: #2C313D;
 
-  --text-primary: #f7fafc;
-  --text-secondary: #cbd5e0;
-  --text-tertiary: #a0aec0;
-  --text-inverse: #1a202c;
+  /* Brand */
+  --brand: #6FD18A;
+  --brand-hover: #5BB874;
+  --brand-press: #4FA365;
+  --brand-tint: #1F2A22;
+  --on-brand: #0E1A0F;
 
-  --border-color: #3d4553;
-  --border-hover: #4a5568;
+  /* Text */
+  --on-surf-0: #E6EAF2;
+  --on-surf-1: #C2C7D2;
+  --on-surf-2: #8B92A0;
+  --on-surf-dim: #6B7180;
 
-  --accent-color: #87ce87;
-  --accent-hover: #72a872;
-  --accent-light: #343a48;
+  /* Status */
+  --success: #6FD18A;
+  --warning: #E6B566;
+  --danger: #F2786F;
+  --danger-tint: #2A1B1A;
 
-  --success-color: #34d399;
-  --error-color: #f87171;
-  --warning-color: #fbbf24;
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
 
-  --user-message-bg: #72a872;
-  --user-message-text: #2e2e2e;
-  --assistant-message-bg: #2d3340;
-  --assistant-message-text: #f7fafc;
+  /* Elevation */
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --elev-2: 0 4px 12px rgba(0, 0, 0, 0.40);
+  --elev-3: 0 16px 32px rgba(0, 0, 0, 0.50);
 
-  --message-code-bg: #3b4152;
+  /* Radii */
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-pill: 999px;
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  /* Spacing (4px grid) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
 
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  /* Font sizes */
+  --fs-caption: 11px;
+  --fs-body-sm: 13px;
+  --fs-body: 14px;
+  --fs-title: 18px;
+  --fs-headline: 22px;
 
-  --transition-fast: 150ms ease;
-  --transition-normal: 200ms ease;
-  --transition-slow: 300ms ease;
+  /* Font weights */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  /* Durations */
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 240ms;
+  --ease-std: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Component heights */
+  --h-control-sm: 28px;
+  --h-control: 36px;
+  --h-control-lg: 44px;
+
+  /* Backward-compat aliases (remove after all component CSS migrated) */
+  --bg-primary: var(--surf-0);
+  --bg-secondary: var(--surf-1);
+  --bg-tertiary: var(--surf-2);
+  --bg-hover: var(--surf-3);
+  --text-primary: var(--on-surf-0);
+  --text-secondary: var(--on-surf-1);
+  --text-tertiary: var(--on-surf-2);
+  --text-inverse: var(--on-brand);
+  --border-color: var(--border-subtle);
+  --border-hover: var(--border-strong);
+  --accent-color: var(--brand);
+  --accent-hover: var(--brand-hover);
+  --accent-light: var(--brand-tint);
+  --success-color: var(--success);
+  --error-color: var(--danger);
+  --warning-color: var(--warning);
+  --user-message-bg: var(--brand);
+  --user-message-text: var(--on-brand);
+  --assistant-message-bg: var(--surf-1);
+  --assistant-message-text: var(--on-surf-0);
+  --message-code-bg: var(--surf-2);
+  --shadow-sm: var(--elev-1);
+  --shadow-md: var(--elev-2);
+  --shadow-lg: var(--elev-3);
+  --radius-sm: var(--r-xs);
+  --radius-md: var(--r-sm);
+  --radius-lg: var(--r-md);
+  --radius-xl: var(--r-lg);
+  --transition-fast: var(--dur-fast) var(--ease-std);
+  --transition-normal: var(--dur-base) var(--ease-std);
+  --transition-slow: var(--dur-slow) var(--ease-std);
 }
 
-/* Scrollbar Styling */
+/* Scrollbar */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--surf-1);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: var(--radius-md);
+  background: var(--border-strong);
+  border-radius: var(--r-pill);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--border-hover);
+  background: var(--on-surf-2);
 }
 
-/* Firefox Scrollbar */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border-color) var(--bg-secondary);
+  scrollbar-color: var(--border-strong) var(--surf-1);
 }

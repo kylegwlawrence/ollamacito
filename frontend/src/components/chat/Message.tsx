@@ -3,6 +3,7 @@ import remarkGfm from 'remark-gfm'
 import { formatDate } from '@/utils/formatters'
 import type { Message as MessageType, RagCitations } from '@/types'
 import { ToolCalls } from './ToolCalls'
+import { Icon } from '../common/Icon'
 import './Message.css'
 
 interface MessageProps {
@@ -29,6 +30,7 @@ const Sources = ({ citations }: { citations: RagCitations }) => {
   return (
     <div className="message__sources">
       <div className="message__sources-header">
+        <Icon name="link" size={16} />
         <span className="message__sources-title">Sources</span>
         {!citations.used_dense && (
           <span
@@ -66,13 +68,13 @@ export const Message = ({ message }: MessageProps) => {
   const getFileIcon = (fileType: string): string => {
     switch (fileType) {
       case 'txt':
-        return '📄'
+        return 'description'
       case 'json':
-        return '📋'
+        return 'data_object'
       case 'csv':
-        return '📊'
+        return 'table_chart'
       default:
-        return '📎'
+        return 'attach_file'
     }
   }
 
@@ -84,7 +86,7 @@ export const Message = ({ message }: MessageProps) => {
           <div className="message__files">
             {message.attached_files.map((file) => (
               <div key={file.id} className="message__file-chip">
-                <span className="message__file-icon">{getFileIcon(file.file_type)}</span>
+                <Icon name={getFileIcon(file.file_type)} size={16} className="message__file-icon" />
                 <span className="message__file-name">{file.filename}</span>
               </div>
             ))}

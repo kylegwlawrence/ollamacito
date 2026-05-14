@@ -1,5 +1,6 @@
 import { useState, KeyboardEvent } from 'react'
 import { Button } from '../common/Button'
+import { Icon } from '../common/Icon'
 import type { ProjectFile } from '@/types'
 import './MessageInput.css'
 
@@ -71,7 +72,7 @@ export const MessageInput = ({
                   }
                   disabled={isStreaming}
                 >
-                  <span aria-hidden="true">{isSelected ? '✓ ' : '+ '}</span>
+                  <Icon name={isSelected ? 'check' : 'add'} size={16} />
                   {file.filename}
                 </button>
               )
@@ -80,7 +81,7 @@ export const MessageInput = ({
         </div>
       )}
 
-      <div className="message-input__controls">
+      <div className="message-input__pill">
         <textarea
           className="message-input__textarea"
           placeholder="Type your message... (Shift+Enter for new line)"
@@ -92,25 +93,26 @@ export const MessageInput = ({
           aria-label="Type your message"
           aria-describedby="message-input-hint"
         />
-        <div className="message-input__buttons">
+        <div className="message-input__send-area">
           {isStreaming ? (
             <Button
               onClick={onStop}
-              variant="secondary"
-              className="message-input__stop-button"
+              variant="danger"
+              size="md"
+              iconOnly
+              leadingIcon="stop"
               aria-label="Stop generating response"
-            >
-              Stop
-            </Button>
+            />
           ) : (
             <Button
               onClick={handleSend}
               disabled={disabled || !message.trim()}
               variant="primary"
+              size="md"
+              iconOnly
+              leadingIcon="arrow_upward"
               aria-label="Send message"
-            >
-              Send
-            </Button>
+            />
           )}
         </div>
       </div>

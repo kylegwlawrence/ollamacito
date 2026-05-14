@@ -1,5 +1,13 @@
 import { useToastStore } from '@/stores/toastStore'
+import { Icon } from './Icon'
 import './ToastContainer.css'
+
+const toastIcon: Record<string, string> = {
+  success: 'check_circle',
+  error: 'error',
+  warning: 'warning',
+  info: 'info',
+}
 
 export const ToastContainer = () => {
   const toasts = useToastStore((s) => s.toasts)
@@ -15,12 +23,7 @@ export const ToastContainer = () => {
           aria-live="assertive"
           onClick={() => removeToast(toast.id)}
         >
-          <div className="toast__icon" aria-hidden="true">
-            {toast.type === 'success' && '✓'}
-            {toast.type === 'error' && '✕'}
-            {toast.type === 'warning' && '⚠'}
-            {toast.type === 'info' && 'ℹ'}
-          </div>
+          <Icon name={toastIcon[toast.type] ?? 'info'} size={18} className="toast__icon" />
           <div className="toast__message">{toast.message}</div>
           <button
             className="toast__close"
@@ -30,7 +33,7 @@ export const ToastContainer = () => {
             }}
             aria-label="Close notification"
           >
-            ×
+            <Icon name="close" size={16} />
           </button>
         </div>
       ))}

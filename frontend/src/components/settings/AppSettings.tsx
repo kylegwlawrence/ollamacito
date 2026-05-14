@@ -6,6 +6,9 @@ import { useToastStore } from '@/stores/toastStore'
 import { useModels } from '@/hooks/useModels'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
+import { ViewHeader } from '../common/ViewHeader'
+import { Icon } from '../common/Icon'
+import { Select } from '../common/Select'
 import './AppSettings.css'
 
 export const AppSettings = () => {
@@ -108,88 +111,77 @@ export const AppSettings = () => {
     )
   }
 
+  const modelOptions = models.map((m) => ({ value: m.name, label: m.name }))
+
   return (
     <div className="app-settings">
-      {/* Header */}
-      <div className="app-settings__header">
-        <div className="app-settings__title-section">
-          <button
-            className="app-settings__back-button"
-            onClick={handleBack}
-            title="Back to chats"
-          >
-            ← Back
+      <ViewHeader
+        breadcrumb={
+          <button className="app-settings__back-btn" onClick={handleBack}>
+            <Icon name="arrow_back" size={16} />
+            Home
           </button>
-          <h1 className="app-settings__title">Application Settings</h1>
-        </div>
-      </div>
+        }
+        title="Application Settings"
+        actions={
+          hasChanges ? (
+            <div className="app-settings__header-actions">
+              <Button onClick={handleCancel} variant="secondary" size="sm" disabled={saving}>
+                Cancel
+              </Button>
+              <Button onClick={handleSave} variant="primary" size="sm" disabled={saving}>
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
 
-      {/* Form */}
-      <div className="app-settings__form">
-        {/* Model Settings Section */}
-        <div className="app-settings__section">
+      <div className="app-settings__body">
+        {/* Model Configuration */}
+        <div className="card app-settings__section">
           <h3 className="app-settings__section-title">Model Configuration</h3>
           <p className="app-settings__section-description">
-            Configure default models for the entire application. These settings apply to all new chats and projects unless overridden.
+            Configure default models for the entire application. These settings apply to all new
+            chats and projects unless overridden.
           </p>
 
-          {/* Default Model */}
           <div className="app-settings__field">
-            <label htmlFor="default-model" className="app-settings__label">
-              Default Model
-            </label>
-            <select
-              id="default-model"
-              className="app-settings__select"
+            <span className="app-settings__label">Default Model</span>
+            <Select
               value={defaultModel}
-              onChange={(e) => setDefaultModel(e.target.value)}
-            >
-              {models.map((model) => (
-                <option key={model.name} value={model.name}>
-                  {model.name}
-                </option>
-              ))}
-            </select>
+              onChange={setDefaultModel}
+              options={modelOptions}
+              aria-label="Select default model"
+            />
             <span className="app-settings__hint">
               Model used for new chats and conversations
             </span>
           </div>
 
-          {/* Conversation Summarization Model */}
           <div className="app-settings__field">
-            <label htmlFor="summarization-model" className="app-settings__label">
-              Conversation Summarization Model
-            </label>
-            <select
-              id="summarization-model"
-              className="app-settings__select"
+            <span className="app-settings__label">Conversation Summarization Model</span>
+            <Select
               value={conversationSummarizationModel}
-              onChange={(e) => setConversationSummarizationModel(e.target.value)}
-            >
-              {models.map((model) => (
-                <option key={model.name} value={model.name}>
-                  {model.name}
-                </option>
-              ))}
-            </select>
+              onChange={setConversationSummarizationModel}
+              options={modelOptions}
+              aria-label="Select summarization model"
+            />
             <span className="app-settings__hint">
               Model used for generating chat titles and summaries
             </span>
           </div>
         </div>
 
-        {/* Generation Parameters Section */}
-        <div className="app-settings__section">
+        {/* Generation Parameters */}
+        <div className="card app-settings__section">
           <h3 className="app-settings__section-title">Generation Parameters</h3>
           <p className="app-settings__section-description">
             Configure default parameters for text generation across all conversations.
           </p>
 
-          {/* Temperature */}
           <div className="app-settings__field">
-            <label htmlFor="temperature" className="app-settings__label">
-              Temperature
-            </label>
+            <label htmlFor="temperature" className="app-settings__label">Temperature</label>
             <input
               id="temperature"
               type="number"
@@ -201,15 +193,13 @@ export const AppSettings = () => {
               step="0.1"
             />
             <span className="app-settings__hint">
-              Controls randomness (0.0-2.0). Lower = more focused, higher = more creative. Default: 0.7
+              Controls randomness (0.0–2.0). Lower = more focused, higher = more creative.
+              Default: 0.7
             </span>
           </div>
 
-          {/* Max Tokens */}
           <div className="app-settings__field">
-            <label htmlFor="max-tokens" className="app-settings__label">
-              Max Tokens
-            </label>
+            <label htmlFor="max-tokens" className="app-settings__label">Max Tokens</label>
             <input
               id="max-tokens"
               type="number"
@@ -224,7 +214,6 @@ export const AppSettings = () => {
             </span>
           </div>
 
-          {/* Context Window Size (num_ctx) */}
           <div className="app-settings__field">
             <label htmlFor="num-ctx" className="app-settings__label">
               Context Window Size (num_ctx)
@@ -239,48 +228,29 @@ export const AppSettings = () => {
               step="1"
             />
             <span className="app-settings__hint">
-              Context window size for the model (maximum tokens for input and output combined). Default: 2048
+              Context window size for the model (maximum tokens for input and output combined).
+              Default: 2048
             </span>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="app-settings__actions">
-          <div className="app-settings__actions-left">
-            <Button
-              onClick={handleSave}
-              variant="primary"
-              disabled={!hasChanges || saving}
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </Button>
-            <Button
-              onClick={handleCancel}
-              variant="secondary"
-              disabled={!hasChanges || saving}
-            >
-              Cancel
-            </Button>
-          </div>
+        {/* About */}
+        <div className="card app-settings__section">
+          <h3 className="app-settings__section-title">About Application Settings</h3>
+          <p className="app-settings__section-description">
+            These settings define the default behavior for your entire application:
+          </p>
+          <ul className="app-settings__info-list">
+            <li><strong>Default Model:</strong> The AI model used for new chats and conversations</li>
+            <li><strong>Conversation Summarization Model:</strong> A smaller, faster model for generating chat titles</li>
+            <li><strong>Temperature:</strong> Controls output randomness and creativity</li>
+            <li><strong>Max Tokens:</strong> Limits the length of model responses</li>
+            <li><strong>Context Window Size:</strong> Total tokens available for conversation history and responses</li>
+          </ul>
+          <p className="app-settings__section-description">
+            Projects can override these defaults with their own settings.
+          </p>
         </div>
-      </div>
-
-      {/* Info Section */}
-      <div className="app-settings__info">
-        <h3>About Application Settings</h3>
-        <p>
-          These settings define the default behavior for your entire application:
-        </p>
-        <ul>
-          <li><strong>Default Model:</strong> The AI model used for new chats and conversations</li>
-          <li><strong>Conversation Summarization Model:</strong> A smaller, faster model for generating chat titles</li>
-          <li><strong>Temperature:</strong> Controls output randomness and creativity</li>
-          <li><strong>Max Tokens:</strong> Limits the length of model responses</li>
-          <li><strong>Context Window Size:</strong> Total tokens available for conversation history and responses</li>
-        </ul>
-        <p>
-          Projects can override these defaults with their own settings.
-        </p>
       </div>
     </div>
   )

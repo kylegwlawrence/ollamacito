@@ -96,13 +96,14 @@ export const FileUpload = ({ projectId, onUploadSuccess }: FileUploadProps) => {
       />
       <Button
         onClick={handleButtonClick}
-        variant="primary"
+        variant="secondary"
         size="sm"
+        leadingIcon="upload"
         disabled={uploading}
       >
-        {uploading ? 'Uploading...' : '+ Upload File'}
+        {uploading ? 'Uploading...' : 'Upload File'}
       </Button>
-      <span className="file-upload__hint">Supports .txt, .json, .csv, .md (max 5MB)</span>
+      <span className="file-upload__hint">.txt .json .csv .md · max 5 MB</span>
     </div>
   )
 }

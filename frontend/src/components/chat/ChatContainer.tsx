@@ -5,9 +5,13 @@ import { MessageInput } from './MessageInput'
 import { useChatStore } from '@/stores/chatStore'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { useStreaming } from '@/hooks/useStreaming'
+import { useModels } from '@/hooks/useModels'
 import { chatApi } from '@/services/chatApi'
 import { getErrorMessage } from '@/utils/errorHandler'
 import type { Project } from '@/types/project'
+import { ViewHeader } from '../common/ViewHeader'
+import { Icon } from '../common/Icon'
+import { Select } from '../common/Select'
 import './ChatContainer.css'
 
 const projectHasFullRagConfig = (project: Project | null | undefined): boolean =>
@@ -43,6 +47,7 @@ export const ChatContainer = () => {
   const isStreamingThisChat =
     streaming.isStreaming && streaming.activeChatId === currentChat?.id
 
+  const { models } = useModels()
   const [togglingAgent, setTogglingAgent] = useState(false)
   const agentToggleAvailable = projectHasFullRagConfig(chatProject)
 
@@ -136,6 +141,16 @@ export const ChatContainer = () => {
     }
   }
 
+  const handleChangeModel = async (newModel: string) => {
+    if (!currentChat || newModel === currentChat.model) return
+    try {
+      const updated = await chatApi.update(currentChat.id, { model: newModel })
+      setCurrentChat({ ...currentChat, ...updated })
+    } catch (err) {
+      console.error('Failed to change model:', getErrorMessage(err, 'unknown error'))
+    }
+  }
+
   if (!currentChat) {
     return (
       <main className="chat-container chat-container--empty" role="main" aria-label="Chat area">
@@ -153,50 +168,48 @@ export const ChatContainer = () => {
       : 'Enable agent mode (let the model search Wikipedia on its own)'
     : 'Agent mode requires the chat’s project to have RAG configured'
 
+  const modelOptions = models.map((m) => ({ value: m.name, label: m.name }))
+
   return (
     <main className="chat-container" role="main" aria-label="Chat conversation">
-      <header className="chat-container__header">
-        <div className="chat-container__header-left">
-          {currentChat.project_id && (
+      <ViewHeader
+        breadcrumb={
+          currentChat.project_id ? (
             <button
-              className="chat-container__back-button"
+              className="chat-container__back-btn"
               onClick={() => navigate(`/projects/${currentChat.project_id}`)}
-              title="Back to project"
               aria-label="Back to project"
             >
-              ← Back to Project
+              <Icon name="arrow_back" size={16} />
+              {chatProject?.name ?? 'Project'}
             </button>
-          )}
-          {chatProject && (
-            <span className="chat-container__project-name">{chatProject.name}</span>
-          )}
-          <h2 className="chat-container__title">{currentChat.title}</h2>
-        </div>
-        <div className="chat-container__header-right">
-          <button
-            type="button"
-            className={`chat-container__agent-toggle ${
-              currentChat.agent_mode_enabled
-                ? 'chat-container__agent-toggle--on'
-                : ''
-            }`}
-            onClick={handleToggleAgent}
-            disabled={!agentToggleAvailable || togglingAgent}
-            title={agentToggleTooltip}
-            aria-pressed={currentChat.agent_mode_enabled}
-          >
-            {currentChat.agent_mode_enabled ? 'Agent: on' : 'Agent: off'}
-          </button>
-          <span className="chat-container__model" aria-label={`Using model ${currentChat.model}`}>
-            {currentChat.model.split(':').map((part, index) => (
-            <span key={index}>
-              {part}
-              {index < currentChat.model.split(':').length - 1 && <br />}
-            </span>
-            ))}
-          </span>
-        </div>
-      </header>
+          ) : undefined
+        }
+        title={currentChat.title}
+        actions={
+          <div className="chat-container__header-actions">
+            <button
+              type="button"
+              className={`chat-container__agent-toggle${
+                currentChat.agent_mode_enabled ? ' chat-container__agent-toggle--on' : ''
+              }`}
+              onClick={handleToggleAgent}
+              disabled={!agentToggleAvailable || togglingAgent}
+              title={agentToggleTooltip}
+              aria-pressed={currentChat.agent_mode_enabled}
+            >
+              <Icon name="auto_awesome" size={16} />
+              {currentChat.agent_mode_enabled ? 'Agent on' : 'Agent'}
+            </button>
+            <Select
+              value={currentChat.model}
+              onChange={handleChangeModel}
+              options={modelOptions}
+              aria-label="Change model for this chat"
+            />
+          </div>
+        }
+      />
       <MessageList
         messages={messages}
         isStreaming={isStreamingThisChat}

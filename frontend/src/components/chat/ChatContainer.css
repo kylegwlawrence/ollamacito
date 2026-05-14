@@ -2,10 +2,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background-color: var(--bg-primary);
-  border-radius: var(--radius-lg);
+  background: var(--surf-0);
   overflow: hidden;
-  border: 1px solid var(--border-color);
 }
 
 .chat-container--empty {
@@ -15,118 +13,81 @@
 
 .chat-container__empty-state {
   text-align: center;
-  color: var(--text-secondary);
 }
 
 .chat-container__empty-state h2 {
-  margin-bottom: 0.5rem;
+  font-size: var(--fs-headline);
+  font-weight: var(--fw-medium);
+  margin-bottom: var(--s-2);
+  color: var(--on-surf-1);
 }
 
-.chat-container__header {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border-color);
-  background-color: var(--bg-secondary);
-  display: flex;
+.chat-container__empty-state p {
+  font-size: var(--fs-body);
+  color: var(--on-surf-2);
+}
+
+.chat-container__back-btn {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  position: relative;
-}
-
-.chat-container__header-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex: 1;
-}
-
-.chat-container__project-name {
-  font-family: 'Trebuchet MS';
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--accent-color);
-  white-space: nowrap;
-}
-
-.chat-container__back-button {
+  gap: var(--s-1);
   background: none;
   border: none;
-  color: var(--text-secondary);
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-sm);
   cursor: pointer;
-  font-size: 0.875rem;
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
-  white-space: nowrap;
+  color: var(--on-surf-2);
+  font-size: var(--fs-body-sm);
+  font-family: inherit;
+  transition: background-color var(--dur-fast) var(--ease-std), color var(--dur-fast) var(--ease-std);
 }
 
-.chat-container__back-button:hover {
-  background-color: var(--bg-tertiary);
-  color: var(--text-primary);
+.chat-container__back-btn:hover {
+  background: var(--surf-2);
+  color: var(--on-surf-0);
 }
 
-.chat-container__back-button:active {
-  transform: scale(0.98);
-}
-
-.chat-container__title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--accent-color);
-  max-width: 60%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-container__model {
-  color: var(--accent-color);
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-
-.chat-container__header-right {
+.chat-container__header-actions {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--s-2);
 }
 
 .chat-container__agent-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
   background: none;
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  color: var(--on-surf-2);
   cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 500;
-  padding: 0.3rem 0.6rem;
-  border-radius: var(--radius-md);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  font-family: inherit;
+  padding: 0 var(--s-3);
+  height: var(--h-control-sm);
+  border-radius: var(--r-pill);
   white-space: nowrap;
-  transition: all var(--transition-fast);
+  transition: background-color var(--dur-fast) var(--ease-std), color var(--dur-fast) var(--ease-std), border-color var(--dur-fast) var(--ease-std);
 }
 
 .chat-container__agent-toggle:hover:not(:disabled) {
-  background-color: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: var(--surf-2);
+  color: var(--on-surf-1);
 }
 
 .chat-container__agent-toggle:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .chat-container__agent-toggle--on {
-  background-color: var(--accent-color);
-  color: var(--bg-primary);
-  border-color: var(--accent-color);
+  background: var(--brand-tint);
+  border-color: var(--brand);
+  color: var(--brand);
 }
 
 .chat-container__agent-toggle--on:hover:not(:disabled) {
-  background-color: var(--accent-color);
-  color: var(--bg-primary);
-  opacity: 0.85;
+  background: var(--brand-tint);
+  color: var(--brand);
 }

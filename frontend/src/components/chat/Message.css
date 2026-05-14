@@ -1,6 +1,6 @@
 .message {
   display: flex;
-  margin-bottom: 1rem;
+  margin-bottom: var(--s-4);
   animation: fadeIn 0.2s ease;
 }
 
@@ -13,22 +13,23 @@
 }
 
 .message__content {
-  max-width: 75%;
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius-lg);
+  max-width: 70%;
   word-break: break-word;
   overflow-wrap: break-word;
 }
 
 .message--user .message__content {
-  background-color: var(--user-message-bg);
-  color: var(--user-message-text);
+  padding: 10px 16px;
+  border-radius: var(--r-lg) var(--r-lg) var(--r-xs) var(--r-lg);
+  background: var(--brand);
+  color: var(--on-brand);
 }
 
 .message--assistant .message__content {
-  background-color: var(--assistant-message-bg);
-  color: var(--assistant-message-text);
-  border: 1px solid var(--border-color);
+  padding: 12px 16px;
+  border-radius: var(--r-lg) var(--r-lg) var(--r-lg) var(--r-xs);
+  background: var(--surf-1);
+  box-shadow: var(--elev-1);
 }
 
 .message__text {
@@ -40,7 +41,7 @@
 }
 
 .message__text p {
-  margin: 0.5rem 0;
+  margin: var(--s-1) 0;
 }
 
 .message__text p:first-child {
@@ -52,54 +53,71 @@
 }
 
 .message__text pre {
-  margin: 0.75rem 0;
+  margin: var(--s-2) 0;
   overflow-x: auto;
   max-width: 100%;
   white-space: pre-wrap;
   word-break: break-word;
-  background-color: var(--message-code-bg);
-  border: 1px solid var(--border-color);
+  background: var(--surf-0);
+  border-radius: var(--r-xs);
+  padding: var(--s-3);
+}
+
+.message--user .message__text pre {
+  background: var(--brand-press);
 }
 
 .message__text code {
-  font-family: 'Fira Code', monospace;
+  font-family: 'Roboto Mono', ui-monospace, monospace;
   font-size: 0.9em;
 }
 
 .message__meta {
   display: flex;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
-  font-size: 0.75rem;
-  opacity: 0.7;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+  font-size: var(--fs-caption);
+  opacity: 0.65;
+}
+
+.message--user .message__meta {
+  color: var(--on-brand);
+}
+
+.message--assistant .message__meta {
+  color: var(--on-surf-2);
 }
 
 /* Attached Files */
 .message__files {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  gap: var(--s-1);
+  margin-bottom: var(--s-2);
 }
 
 .message__file-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.25rem 0.625rem;
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
+  gap: var(--s-1);
+  padding: 2px var(--s-2);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
 }
 
 .message--user .message__file-chip {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--brand-press);
+  color: var(--on-brand);
+}
+
+.message--assistant .message__file-chip {
+  background: var(--surf-2);
+  color: var(--on-surf-1);
 }
 
 .message__file-icon {
-  font-size: 1rem;
-  line-height: 1;
+  flex-shrink: 0;
 }
 
 .message__file-name {
@@ -108,36 +126,35 @@
 
 /* Sources / RAG citations */
 .message__sources {
-  margin-top: 0.75rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--border-color);
+  margin-top: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .message__sources-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.375rem;
-  font-size: 0.75rem;
+  gap: var(--s-1);
+  margin-bottom: var(--s-1);
+  font-size: var(--fs-caption);
   opacity: 0.75;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .message__sources-title {
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .message__sources-badge {
   display: inline-block;
-  padding: 0.05rem 0.4rem;
-  border-radius: 8px;
+  padding: 1px var(--s-1);
+  border-radius: var(--r-xs);
   background: rgba(255, 165, 0, 0.18);
-  color: var(--assistant-message-text);
   border: 1px solid rgba(255, 165, 0, 0.4);
   text-transform: none;
   letter-spacing: 0;
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 .message__sources-list {
@@ -146,11 +163,11 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 2px;
 }
 
 .message__sources-item {
-  font-size: 0.85rem;
+  font-size: var(--fs-body-sm);
   line-height: 1.4;
 }
 
@@ -168,7 +185,7 @@
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;

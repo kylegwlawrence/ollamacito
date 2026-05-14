@@ -1,7 +1,7 @@
 .file-upload {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--s-2);
 }
 
 .file-upload__input {
@@ -9,6 +9,6 @@
 }
 
 .file-upload__hint {
-  font-size: 0.75rem;
-  color: var(--color-text-secondary);
+  font-size: var(--fs-caption);
+  color: var(--on-surf-dim);
 }

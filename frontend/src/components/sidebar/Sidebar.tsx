@@ -6,8 +6,11 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useModels } from '@/hooks/useModels'
 import { useConfirmStore } from '@/stores/confirmStore'
 import { useProjectsStore } from '@/stores/projectsStore'
+import { usePromptStore } from '@/stores/promptStore'
 import { useToastStore } from '@/stores/toastStore'
 import { Button } from '../common/Button'
+import { Icon } from '../common/Icon'
+import { Select } from '../common/Select'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ChatItem } from './ChatItem'
 import { ProjectItem } from './ProjectItem'
@@ -26,9 +29,8 @@ export const Sidebar = () => {
   const deleteProject = useProjectsStore((s) => s.deleteProject)
   const showToast = useToastStore((s) => s.showToast)
   const confirm = useConfirmStore((s) => s.ask)
+  const prompt = usePromptStore((s) => s.ask)
 
-  // URL-derived state — used for highlighting the active project + deciding
-  // where "go back to chat" navigates after a destructive action.
   const navigate = useNavigate()
   const projectMatch = useMatch('/projects/:projectId/*')
   const currentProjectId = projectMatch?.params.projectId ?? null
@@ -91,11 +93,15 @@ export const Sidebar = () => {
   }
 
   const handleCreateProject = async () => {
-    const name = window.prompt('Enter project name:')
-    if (!name?.trim()) return
+    const name = await prompt({
+      title: 'Create new project',
+      placeholder: 'Project name',
+      confirmLabel: 'Create',
+    })
+    if (!name) return
 
     try {
-      const newProject = await createProject(name.trim())
+      const newProject = await createProject(name)
       if (newProject) {
         showToast('Project created successfully', 'success')
         navigate(`/projects/${newProject.id}`)
@@ -131,134 +137,148 @@ export const Sidebar = () => {
   }
 
   const standaloneChats = chats.filter((chat) => !chat.project_id)
+  const modelOptions = models.map((m) => ({ value: m.name, label: m.name }))
 
   return (
     <nav className="sidebar" aria-label="Main navigation">
-      <div className="sidebar__header">
-        <h1 className="sidebar__title">Ollama::cito</h1>
+      {/* Brand */}
+      <div className="sidebar__brand">
         <img src="/green_logo_3.png" alt="Logo" className="sidebar__logo" />
-        <Button
-          onClick={handleCreateProject}
-          variant="primary"
-          size="sm"
-          title="Create a new project"
-          aria-label="Create a new project"
-        >
-          + Create Project
-        </Button>
+        <h1 className="sidebar__title">Ollama::cito</h1>
+      </div>
+
+      {/* Actions */}
+      <div className="sidebar__actions">
         <Button
           onClick={handleNewChat}
           variant="primary"
           size="sm"
+          leadingIcon="edit_square"
           title="Create a new chat"
           aria-label="Create a new chat"
         >
-          + New Chat
+          New Chat
         </Button>
-        <div className="sidebar__model-selector">
-          <label htmlFor="model-select" className="sidebar__model-label">
-            Model:
-          </label>
-          <select
-            id="model-select"
-            className="sidebar__model-select"
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            title="Select a model for new chats"
-          >
-            {models.map((model) => (
-              <option key={model.name} value={model.name}>
-                {model.name}
-              </option>
-            ))}
-          </select>
-        </div>
         <Button
-          onClick={() => navigate('/settings')}
+          onClick={handleCreateProject}
           variant="secondary"
           size="sm"
-          title="Application settings"
-          aria-label="Open application settings"
+          leadingIcon="create_new_folder"
+          title="Create a new project"
+          aria-label="Create a new project"
         >
-          Settings
+          New Project
         </Button>
       </div>
 
-      {/* Projects Section */}
-      <section className="sidebar__section" aria-labelledby="projects-heading">
-        <button
-          className="sidebar__section-header"
-          onClick={() => setProjectsExpanded(!projectsExpanded)}
-          aria-expanded={projectsExpanded}
-          aria-controls="projects-list"
-        >
-          <span id="projects-heading">{projectsExpanded ? '▼' : '▶'} Projects</span>
-        </button>
+      {/* Scrollable sections */}
+      <div className="sidebar__scrollable">
+        {/* Projects */}
+        <section className="sidebar__group" aria-labelledby="projects-heading">
+          <button
+            className="sidebar__group-header"
+            onClick={() => setProjectsExpanded(!projectsExpanded)}
+            aria-expanded={projectsExpanded}
+            aria-controls="projects-list"
+          >
+            <span id="projects-heading" className="sidebar__group-label">Projects</span>
+            <Icon
+              name="expand_more"
+              size={16}
+              className={`sidebar__group-chevron${projectsExpanded ? ' sidebar__group-chevron--open' : ''}`}
+            />
+          </button>
 
-        {projectsExpanded && (
-          <div id="projects-list" className="sidebar__projects" role="list">
-            {projectsLoading ? (
-              <div className="sidebar__loading">
-                <LoadingSpinner />
-              </div>
-            ) : projects.length === 0 ? (
-              <div className="sidebar__empty">
-                <p>No projects yet. Create one to organize your chats!</p>
-              </div>
-            ) : (
-              projects.map((project) => (
-                <ProjectItem
-                  key={project.id}
-                  project={project}
-                  isActive={currentProjectId === project.id}
-                  onSelect={() => navigate(`/projects/${project.id}`)}
-                  onDelete={() => handleDeleteProject(project.id, project.chat_count)}
+          {projectsExpanded && (
+            <div id="projects-list" className="sidebar__group-items" role="list">
+              {projectsLoading ? (
+                <div className="sidebar__loading">
+                  <LoadingSpinner />
+                </div>
+              ) : projects.length === 0 ? (
+                <div className="sidebar__empty">
+                  <p>No projects yet</p>
+                </div>
+              ) : (
+                projects.map((project) => (
+                  <ProjectItem
+                    key={project.id}
+                    project={project}
+                    isActive={currentProjectId === project.id}
+                    onSelect={() => navigate(`/projects/${project.id}`)}
+                    onDelete={() => handleDeleteProject(project.id, project.chat_count)}
+                  />
+                ))
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Chats */}
+        <section className="sidebar__group" aria-labelledby="chats-heading">
+          <button
+            className="sidebar__group-header"
+            onClick={() => setChatsExpanded(!chatsExpanded)}
+            aria-expanded={chatsExpanded}
+            aria-controls="chats-list"
+          >
+            <span id="chats-heading" className="sidebar__group-label">Chats</span>
+            <Icon
+              name="expand_more"
+              size={16}
+              className={`sidebar__group-chevron${chatsExpanded ? ' sidebar__group-chevron--open' : ''}`}
+            />
+          </button>
+
+          {chatsExpanded && (
+            <div id="chats-list" className="sidebar__group-items" role="list">
+              {loading && (
+                <div className="sidebar__loading">
+                  <LoadingSpinner />
+                </div>
+              )}
+              {!loading && standaloneChats.length === 0 && (
+                <div className="sidebar__empty">
+                  <p>No standalone chats</p>
+                </div>
+              )}
+              {standaloneChats.map((chat) => (
+                <ChatItem
+                  key={chat.id}
+                  chat={chat}
+                  isActive={currentChat?.id === chat.id}
+                  onSelect={handleSelectChat}
+                  onRename={handleRename}
+                  onChangeModel={handleChangeModel}
+                  onDelete={handleDelete}
                 />
-              ))
-            )}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
 
-      {/* Chats Section - Only standalone chats */}
-      <section className="sidebar__section" aria-labelledby="chats-heading">
+      {/* Footer: model picker + settings */}
+      <div className="sidebar__footer">
+        <div className="sidebar__model-row">
+          <Icon name="smart_toy" size={16} className="sidebar__model-icon" />
+          <Select
+            value={selectedModel}
+            onChange={setSelectedModel}
+            options={modelOptions}
+            aria-label="Select model for new chats"
+          />
+        </div>
         <button
-          className="sidebar__section-header"
-          onClick={() => setChatsExpanded(!chatsExpanded)}
-          aria-expanded={chatsExpanded}
-          aria-controls="chats-list"
+          className="sidebar__settings-link"
+          onClick={() => navigate('/settings')}
+          title="Application settings"
+          aria-label="Open application settings"
         >
-          <span id="chats-heading">{chatsExpanded ? '▼' : '▶'} Chats</span>
+          <Icon name="settings" size={18} />
+          <span>Settings</span>
         </button>
-
-        {chatsExpanded && (
-          <div id="chats-list" className="sidebar__chats" role="list">
-            {loading && (
-              <div className="sidebar__loading">
-                <LoadingSpinner />
-              </div>
-            )}
-
-            {!loading && standaloneChats.length === 0 && (
-              <div className="sidebar__empty">
-                <p>No standalone chats yet.</p>
-              </div>
-            )}
-
-            {standaloneChats.map((chat) => (
-              <ChatItem
-                key={chat.id}
-                chat={chat}
-                isActive={currentChat?.id === chat.id}
-                onSelect={handleSelectChat}
-                onRename={handleRename}
-                onChangeModel={handleChangeModel}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      </div>
     </nav>
   )
 }

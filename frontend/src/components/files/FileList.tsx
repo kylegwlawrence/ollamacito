@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button } from '../common/Button'
+import { Icon } from '../common/Icon'
 import { useConfirmStore } from '@/stores/confirmStore'
 import { useToastStore } from '@/stores/toastStore'
 import { projectApi } from '@/services/projectApi'
@@ -55,13 +56,13 @@ export const FileList = ({ projectId, files, onFileDeleted }: FileListProps) => 
   const getFileIcon = (fileType: string): string => {
     switch (fileType) {
       case 'txt':
-        return '📄'
+        return 'description'
       case 'json':
-        return '📋'
+        return 'data_object'
       case 'csv':
-        return '📊'
+        return 'table_chart'
       default:
-        return '📎'
+        return 'attach_file'
     }
   }
 
@@ -69,7 +70,7 @@ export const FileList = ({ projectId, files, onFileDeleted }: FileListProps) => 
     return (
       <div className="file-list file-list--empty">
         <p>No files uploaded yet</p>
-        <p className="file-list__hint">Upload .txt, .json, or .csv files to reference in your chats</p>
+        <p className="file-list__hint">Upload .txt, .json, .csv, or .md files to reference in your chats</p>
       </div>
     )
   }
@@ -84,13 +85,18 @@ export const FileList = ({ projectId, files, onFileDeleted }: FileListProps) => 
               onClick={() => toggleExpand(file.id)}
               aria-expanded={expandedFileId === file.id}
             >
-              <span className="file-item__icon">{getFileIcon(file.file_type)}</span>
+              <Icon name={getFileIcon(file.file_type)} size={20} className="file-item__icon" />
               <div className="file-item__details">
                 <span className="file-item__name">{file.filename}</span>
                 <span className="file-item__meta">
                   {file.file_type.toUpperCase()} · {formatFileSize(file.file_size)}
                 </span>
               </div>
+              <Icon
+                name="expand_more"
+                size={18}
+                className={`file-item__chevron${expandedFileId === file.id ? ' file-item__chevron--open' : ''}`}
+              />
             </button>
             <Button
               onClick={() => handleDelete(file.id, file.filename)}
@@ -104,7 +110,7 @@ export const FileList = ({ projectId, files, onFileDeleted }: FileListProps) => 
 
           {expandedFileId === file.id && file.content_preview && (
             <div className="file-item__preview">
-              <div className="file-item__preview-label">Preview:</div>
+              <div className="file-item__preview-label">Preview</div>
               <pre className="file-item__preview-content">{file.content_preview}</pre>
             </div>
           )}

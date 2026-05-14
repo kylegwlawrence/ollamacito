@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { Chat } from '@/types'
 import { useModels } from '@/hooks/useModels'
+import { Icon } from '../common/Icon'
+import { Select } from '../common/Select'
 import './ChatItem.css'
 
 interface ChatItemProps {
@@ -47,6 +49,8 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
     await onDelete(chat.id)
   }
 
+  const modelOptions = models.map((m) => ({ value: m.name, label: m.name }))
+
   return (
     <div
       className={`chat-item ${isActive ? 'chat-item--active' : ''}`}
@@ -75,21 +79,15 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
           aria-label="Edit chat title"
         />
       ) : isSelectingModel ? (
-        <select
-          autoFocus
-          className="chat-item__select"
-          value={chat.model}
-          onChange={(e) => handleModelChange(e.target.value)}
-          onBlur={() => setIsSelectingModel(false)}
-          onClick={(e) => e.stopPropagation()}
-          aria-label="Select model for chat"
-        >
-          {models.map((model) => (
-            <option key={model.name} value={model.name}>
-              {model.name}
-            </option>
-          ))}
-        </select>
+        <div className="chat-item__model-select" onClick={(e) => e.stopPropagation()}>
+          <Select
+            value={chat.model}
+            onChange={handleModelChange}
+            options={modelOptions}
+            aria-label="Select model for chat"
+            onClose={() => setIsSelectingModel(false)}
+          />
+        </div>
       ) : (
         <>
           <div
@@ -101,9 +99,9 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
           >
             {chat.title}
           </div>
-          <div className="chat-item__actions">
+          <div className="chat-item__footer">
             <button
-              className="chat-item__model"
+              className="chat-item__model-btn"
               onClick={(e) => {
                 e.stopPropagation()
                 setIsSelectingModel(true)
@@ -112,9 +110,9 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
             >
               {chat.model}
             </button>
-            <div className="chat-item__buttons">
+            <div className="chat-item__actions">
               <button
-                className="chat-item__edit"
+                className="icon-btn chat-item__edit"
                 onClick={(e) => {
                   e.stopPropagation()
                   setIsEditing(true)
@@ -122,15 +120,15 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
                 title="Rename chat"
                 aria-label={`Rename chat ${chat.title}`}
               >
-                ✎
+                <Icon name="edit" size={16} />
               </button>
               <button
-                className="chat-item__delete"
+                className="icon-btn chat-item__delete"
                 onClick={handleDelete}
                 title="Delete chat"
                 aria-label={`Delete chat ${chat.title}`}
               >
-                ×
+                <Icon name="delete" size={16} />
               </button>
             </div>
           </div>

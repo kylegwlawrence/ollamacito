@@ -3,29 +3,31 @@
 @import './theme.css';
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  transition: background-color var(--transition-normal),
-    color var(--transition-normal);
+  font-family: 'Roboto Flex', system-ui, sans-serif;
+  font-variation-settings: 'opsz' 14, 'wght' 400;
+  background-color: var(--surf-0);
+  color: var(--on-surf-0);
 }
 
-/* Code Blocks in Messages */
+code,
+pre {
+  font-family: 'Roboto Mono', ui-monospace, monospace;
+}
+
+/* Inline code */
 code {
-  font-family: 'Fira Code', 'Courier New', monospace;
   font-size: 0.9em;
-  background-color: var(--bg-tertiary);
-  padding: 0.2em 0.4em;
-  border-radius: var(--radius-sm);
+  background-color: var(--surf-2);
+  padding: 0.15em 0.4em;
+  border-radius: var(--r-xs);
 }
 
 pre {
-  background-color: var(--bg-tertiary);
-  padding: 1rem;
-  border-radius: var(--radius-md);
+  background-color: var(--surf-2);
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
   overflow-x: auto;
-  margin: 0.5rem 0;
+  margin: var(--s-2) 0;
 }
 
 pre code {
@@ -63,11 +65,38 @@ pre code {
   }
 }
 
-/* Smooth transitions for theme changes */
-* {
-  transition: background-color var(--transition-normal),
-    color var(--transition-normal),
-    border-color var(--transition-normal);
+/* Card utility */
+.card {
+  background: var(--surf-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  padding: var(--s-4);
+}
+
+/* Icon-button utility */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--on-surf-2);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-std), color var(--dur-fast) var(--ease-std);
+}
+
+.icon-btn:hover {
+  background: var(--surf-2);
+  color: var(--on-surf-0);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
 }
 
 /* Prevent transition on page load */

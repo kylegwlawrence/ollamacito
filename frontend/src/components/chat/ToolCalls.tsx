@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ToolCall } from '@/types/message'
+import { Icon } from '../common/Icon'
 import './ToolCalls.css'
 
 interface ToolCallsProps {
@@ -51,9 +52,7 @@ export const ToolCalls = ({ calls, streaming = false }: ToolCallsProps) => {
             ? '1 tool call'
             : `${calls.length} tool calls`}
         </span>
-        <span className="message__tool-calls-chevron" aria-hidden>
-          {expanded ? '▾' : '▸'}
-        </span>
+        <Icon name="expand_more" size={16} className="message__tool-calls-chevron" />
       </button>
       {expanded && (
         <ul className="message__tool-calls-list">
@@ -77,9 +76,15 @@ export const ToolCalls = ({ calls, streaming = false }: ToolCallsProps) => {
                   {summarizeInput(tc.input)}
                 </span>
                 <span className="message__tool-call-status">
-                  {status === 'pending' && '…'}
-                  {status === 'ok' && (tc.summary ?? 'ok')}
-                  {status === 'err' && (tc.error ?? 'failed')}
+                  {status === 'pending' && (
+                    <><Icon name="hourglass_empty" size={16} />…</>
+                  )}
+                  {status === 'ok' && (
+                    <><Icon name="check_circle" size={16} />{tc.summary ?? 'ok'}</>
+                  )}
+                  {status === 'err' && (
+                    <><Icon name="error" size={16} />{tc.error ?? 'failed'}</>
+                  )}
                 </span>
               </li>
             )
