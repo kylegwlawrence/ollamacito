@@ -70,6 +70,10 @@ class Settings(BaseSettings):
         default="app/prompts/chat_title_generation.md",
         description="Path to prompt file for title generation (relative to backend directory)",
     )
+    memory_generation_prompt_file: str = Field(
+        default="app/prompts/memory_generation.md",
+        description="Path to prompt file for project memory generation (relative to backend directory).",
+    )
     enable_auto_title: bool = Field(
         default=True,
         description="Enable automatic chat title generation",

@@ -10,18 +10,20 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db, get_project_or_404
 from app.core.logging import get_logger
-from app.db.models import Chat, Project, ProjectFile, User
+from app.db.models import Chat, Message, Project, ProjectFile, User
 from app.schemas.chat import ChatListResponse, ChatResponse
 from app.schemas.project import (
     ProjectCreate,
     ProjectFileCreate,
     ProjectFileResponse,
     ProjectListResponse,
+    ProjectMemoryGenerateResponse,
     ProjectResponse,
     ProjectUpdate,
     ProjectWithDetails,
     RagInfoRequest,
 )
+from app.services.ollama_service import ollama_service
 from app.services.rag_service import rag_service
 
 router = APIRouter()
@@ -543,3 +545,82 @@ async def delete_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error deleting file",
         )
+
+
+@router.post(
+    "/{project_id}/memory/generate",
+    response_model=ProjectMemoryGenerateResponse,
+)
+async def generate_project_memory(
+    project: Project = Depends(get_project_or_404),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ProjectMemoryGenerateResponse:
+    """
+    Generate a project memory document from up to 20 most-recent chats.
+
+    Does NOT persist — returns the text, lets the user edit, then they save
+    via PATCH /projects/{id}. Cross-user projects yield 404 via the
+    ownership dependency; projects with no chats yield 422.
+    """
+    chats = (
+        (
+            await db.execute(
+                select(Chat)
+                .where(Chat.project_id == project.id)
+                .order_by(Chat.created_at.desc())
+                .limit(20)
+                .options(selectinload(Chat.messages))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not chats:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No chats in this project to generate memory from.",
+        )
+
+    # Build chronological transcript (oldest chat first, oldest message first).
+    transcript_parts: list[str] = []
+    for chat in reversed(chats):
+        messages = sorted(chat.messages, key=lambda m: m.created_at)
+        if not messages:
+            continue
+        date_str = chat.created_at.strftime("%Y-%m-%d")
+        lines = [f'=== CHAT: "{chat.title}" ({date_str}) ===']
+        for msg in messages:
+            if msg.role not in ("user", "assistant"):
+                continue
+            content = msg.content or ""
+            if len(content) > 600:
+                content = content[:600] + "... [truncated]"
+            lines.append(f"{msg.role.capitalize()}: {content}")
+        transcript_parts.append("\n".join(lines))
+
+    if not transcript_parts:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Project chats contain no user/assistant messages.",
+        )
+
+    transcript = "\n\n".join(transcript_parts)
+
+    # Resolve generation model from per-user Settings (same field title-gen uses).
+    from app.db.models import Settings as UserSettings  # local import to avoid name clash
+    user_settings = (
+        await db.execute(select(UserSettings).where(UserSettings.user_id == current_user.id))
+    ).scalar_one_or_none()
+    gen_model = user_settings.conversation_summarization_model if user_settings else None
+
+    logger.info(
+        f"Generating memory for project {project.id} from {len(transcript_parts)} chat(s) "
+        f"using model '{gen_model or 'env-default'}'"
+    )
+    memory_text = await ollama_service.generate_project_memory(
+        transcript, model=gen_model
+    )
+
+    return ProjectMemoryGenerateResponse(memory=memory_text)

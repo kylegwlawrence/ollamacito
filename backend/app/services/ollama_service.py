@@ -334,5 +334,89 @@ class OllamaService:
             raise OllamaConnectionError(self.base_url, str(e))
 
 
+    def _load_memory_prompt(self) -> str:
+        """Load the memory-generation prompt template (with `{transcript}` placeholder)."""
+        try:
+            prompt_file = Path(settings.memory_generation_prompt_file)
+            if prompt_file.exists():
+                return prompt_file.read_text().strip()
+            logger.warning(f"Memory prompt file not found: {prompt_file}")
+        except Exception as e:
+            logger.error(f"Error loading memory prompt file: {e}")
+        return (
+            "Extract key facts and decisions from these project chats. "
+            "Output a concise markdown bullet list under 400 words.\n\n"
+            "{transcript}"
+        )
+
+    async def generate_project_memory(
+        self,
+        transcript: str,
+        model: Optional[str] = None,
+    ) -> str:
+        """
+        Generate a project memory document from a formatted transcript.
+
+        Args:
+            transcript: Pre-formatted chat history (caller builds this).
+            model: Override the generation model. When None, falls back to
+                settings.title_generation_model (env-var seed). Callers should
+                pass the DB-stored `Settings.conversation_summarization_model`.
+
+        Returns:
+            str: The generated memory text (cleaned).
+
+        Raises:
+            OllamaConnectionError: If unable to connect.
+            OllamaModelNotFoundError: If model not found.
+        """
+        gen_model = model or settings.title_generation_model
+
+        try:
+            template = self._load_memory_prompt()
+            prompt = template.replace("{transcript}", transcript)
+
+            logger.info(f"Generating project memory using model '{gen_model}'")
+
+            response = await self.client.chat(
+                model=gen_model,
+                messages=[{"role": "user", "content": prompt}],
+                options={
+                    "num_ctx": 16000,
+                    "num_predict": 1500,
+                    "temperature": 0.3,
+                },
+                stream=False,
+            )
+
+            raw = response.get("message", {}).get("content", "").strip()
+            if not raw:
+                logger.warning("Empty memory generated")
+                return ""
+
+            # Strip any prompt-echo preamble: drop lines until the first
+            # bullet (markdown - or *) or markdown heading (#).
+            lines = raw.split("\n")
+            start = next(
+                (
+                    i
+                    for i, line in enumerate(lines)
+                    if line.strip().startswith(("-", "*", "#"))
+                ),
+                0,
+            )
+            cleaned = "\n".join(lines[start:]).strip()
+            logger.info(f"Generated memory ({len(cleaned)} chars)")
+            return cleaned
+
+        except Exception as e:
+            error_str = str(e).lower()
+            if "not found" in error_str or "does not exist" in error_str:
+                logger.error(f"Memory generation model '{gen_model}' not found")
+                raise OllamaModelNotFoundError(gen_model)
+            logger.error(f"Error in memory generation: {e}")
+            raise OllamaConnectionError(self.base_url, str(e))
+
+
 # Create global instance
 ollama_service = OllamaService()
