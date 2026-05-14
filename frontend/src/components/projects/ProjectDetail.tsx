@@ -41,7 +41,6 @@ export const ProjectDetail = () => {
   )
 
   // Settings form state
-  const [settingsExpanded, setSettingsExpanded] = useState(false)
   const [editedName, setEditedName] = useState('')
   const [editedInstructions, setEditedInstructions] = useState('')
   const [editedDefaultModel, setEditedDefaultModel] = useState('')
@@ -395,30 +394,59 @@ export const ProjectDetail = () => {
             <Button variant="primary" size="sm" leadingIcon="add" onClick={handleNewChat}>
               New chat
             </Button>
-            <button
-              type="button"
-              className="icon-btn"
-              aria-pressed={settingsExpanded}
-              onClick={() => setSettingsExpanded(!settingsExpanded)}
-              title="Project settings"
-              aria-label="Toggle project settings"
-            >
-              <Icon name="tune" size={20} />
-            </button>
           </div>
         }
       />
 
       <div className="project-detail__body">
-        {/* Settings card (collapsible via header icon) */}
-        {settingsExpanded && (
-          <div className="card project-detail__settings-card">
-            <div className="project-detail__settings-header">
-              <Icon name="tune" size={18} />
-              <h2 className="project-detail__settings-title">Project Settings</h2>
-            </div>
+        {/* Chats section */}
+        <div className="card project-detail__section">
+          <div className="project-detail__section-header">
+            <h2>Chats</h2>
+          </div>
+          <div className="project-detail__chats">
+            {projectChats.length === 0 ? (
+              <div className="project-detail__empty">
+                <p>No chats in this project yet.</p>
+                <p>Create a new chat to get started!</p>
+              </div>
+            ) : (
+              projectChats.map((chat) => (
+                <ChatItem
+                  key={chat.id}
+                  chat={chat}
+                  isActive={false}
+                  onSelect={handleSelectChat}
+                  onRename={handleRenameChat}
+                  onChangeModel={handleChangeModel}
+                  onDelete={handleDeleteChat}
+                />
+              ))
+            )}
+          </div>
+        </div>
 
-            <div className="project-detail__settings-form">
+        {/* Files section */}
+        <div className="card project-detail__section">
+          <div className="project-detail__section-header">
+            <h2>Files</h2>
+            <FileUpload projectId={currentProjectId!} onUploadSuccess={loadProjectData} />
+          </div>
+          <FileList
+            projectId={currentProjectId!}
+            files={currentProject.files || []}
+            onFileDeleted={loadProjectData}
+          />
+        </div>
+
+        {/* Settings (always expanded, between Files and Memory) */}
+        <div className="card project-detail__settings-card">
+          <div className="project-detail__settings-header">
+            <Icon name="tune" size={18} />
+            <h2 className="project-detail__settings-title">Project Settings</h2>
+          </div>
+
+          <div className="project-detail__settings-form">
               {/* Project Name */}
               <div className="project-detail__field">
                 <label htmlFor="project-name-edit" className="project-detail__label">
@@ -657,56 +685,7 @@ export const ProjectDetail = () => {
                   </Button>
                 </div>
               )}
-            </div>
           </div>
-        )}
-
-        {/* Custom Instructions preview (when settings collapsed) */}
-        {!settingsExpanded && currentProject.custom_instructions && (
-          <div className="card project-detail__instructions">
-            <h3>Custom Instructions</h3>
-            <p>{currentProject.custom_instructions}</p>
-          </div>
-        )}
-
-        {/* Chats section */}
-        <div className="card project-detail__section">
-          <div className="project-detail__section-header">
-            <h2>Chats</h2>
-          </div>
-          <div className="project-detail__chats">
-            {projectChats.length === 0 ? (
-              <div className="project-detail__empty">
-                <p>No chats in this project yet.</p>
-                <p>Create a new chat to get started!</p>
-              </div>
-            ) : (
-              projectChats.map((chat) => (
-                <ChatItem
-                  key={chat.id}
-                  chat={chat}
-                  isActive={false}
-                  onSelect={handleSelectChat}
-                  onRename={handleRenameChat}
-                  onChangeModel={handleChangeModel}
-                  onDelete={handleDeleteChat}
-                />
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Files section */}
-        <div className="card project-detail__section">
-          <div className="project-detail__section-header">
-            <h2>Files</h2>
-            <FileUpload projectId={currentProjectId!} onUploadSuccess={loadProjectData} />
-          </div>
-          <FileList
-            projectId={currentProjectId!}
-            files={currentProject.files || []}
-            onFileDeleted={loadProjectData}
-          />
         </div>
 
         {/* Memory section */}

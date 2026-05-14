@@ -130,30 +130,6 @@
   margin: 0;
 }
 
-/* Custom instructions preview */
-.project-detail__instructions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-
-.project-detail__instructions h3 {
-  font-size: var(--fs-body-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--on-surf-2);
-  margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.project-detail__instructions p {
-  font-size: var(--fs-body-sm);
-  color: var(--on-surf-1);
-  margin: 0;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
 /* Chats */
 .project-detail__chats {
   display: flex;
