@@ -45,7 +45,6 @@ frontend/src/
 
 docker-compose.yml + docker-compose.dev.yml   compose stack (override adds hot reload + Vite ports)
 Makefile                                       entry point for dev/ops commands
-PLAN_NEW.md                                    the refactor plan (mostly complete; see status below)
 ```
 
 ## Streaming
@@ -98,10 +97,10 @@ CI (`.github/workflows/ci.yml`) runs all of the above on push + PR, plus `alembi
 
 `.pre-commit-config.yaml` wires ruff/black/eslint/prettier as staged-file hooks. Install with `brew install pre-commit` (or `pip3 install --user pre-commit`), then `pre-commit install`. Same checks run in CI either way.
 
-## Refactor status (PLAN_NEW.md)
+## Refactor status
 
 Done: Phase 0 (hygiene) · Phase 1 (stream correctness) · Phase 2 (Alembic single source of truth) · Phase 3 (auth scaffold + per-user schema) · Phase 4 (POST + NDJSON) · Phase 5 (Router + Zustand) · Phase 6 (selective file attachment) · Phase 8 (tests + CI).
 
 Deferred: **Phase 7 (auth ON + rate limiting)** — the data model is multi-user-ready but the login flow / JWT / rate-limiter were skipped at the user's request. `AUTH_ENABLED=true` will raise until Phase 7 is done.
 
-Explicitly out of scope (see PLAN_NEW.md §4): MCP, RAG/embeddings, memory generation, light mode (the `theme` field was removed), code-block syntax highlighting, OAuth, audit logging.
+Explicitly out of scope: MCP, RAG/embeddings, memory generation, light mode (the `theme` field was removed), code-block syntax highlighting, OAuth, audit logging.
