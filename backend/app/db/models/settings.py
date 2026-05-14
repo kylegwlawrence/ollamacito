@@ -53,7 +53,7 @@ class Settings(Base, TimestampMixin):
     )
     num_ctx: Mapped[int] = mapped_column(
         Integer,
-        default=2048,
+        default=4096,
         nullable=False,
     )
 

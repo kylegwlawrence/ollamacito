@@ -79,7 +79,7 @@ async def _seed_default_user_and_settings() -> None:
                     conversation_summarization_model=settings.title_generation_model,
                     default_temperature=0.7,
                     default_max_tokens=2048,
-                    num_ctx=2048,
+                    num_ctx=4096,
                 )
             )
             logger.info("✓ Seeded default user's Settings row")
