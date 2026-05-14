@@ -7,6 +7,7 @@
  */
 import { createBrowserRouter, Outlet } from 'react-router-dom'
 
+import { ConfirmDialog } from './components/common/ConfirmDialog'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { ToastContainer } from './components/common/ToastContainer'
 import { Sidebar } from './components/sidebar/Sidebar'
@@ -39,6 +40,7 @@ const RootLayout = () => {
         </div>
       </div>
       <ToastContainer />
+      <ConfirmDialog />
     </>
   )
 }

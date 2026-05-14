@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button } from '../common/Button'
+import { useConfirmStore } from '@/stores/confirmStore'
 import { useToastStore } from '@/stores/toastStore'
 import { projectApi } from '@/services/projectApi'
 import type { ProjectFile } from '@/types'
@@ -15,11 +16,16 @@ export const FileList = ({ projectId, files, onFileDeleted }: FileListProps) => 
   const [expandedFileId, setExpandedFileId] = useState<string | null>(null)
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
   const showToast = useToastStore((s) => s.showToast)
+  const confirm = useConfirmStore((s) => s.ask)
 
   const handleDelete = async (fileId: string, filename: string) => {
-    if (!window.confirm(`Are you sure you want to delete "${filename}"?`)) {
-      return
-    }
+    const ok = await confirm({
+      title: `Delete "${filename}"?`,
+      message: 'This action cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    })
+    if (!ok) return
 
     try {
       setDeletingFileId(fileId)

@@ -6,6 +6,7 @@ import { useChats } from '@/hooks/useChats'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useModels } from '@/hooks/useModels'
 import { useToastStore } from '@/stores/toastStore'
+import { useConfirmStore } from '@/stores/confirmStore'
 import { projectApi } from '@/services/projectApi'
 import { ragApi } from '@/services/ragApi'
 import { Button } from '../common/Button'
@@ -28,6 +29,7 @@ export const ProjectDetail = () => {
   const settings = useSettingsStore((s) => s.settings)
   const { models } = useModels()
   const showToast = useToastStore((s) => s.showToast)
+  const confirm = useConfirmStore((s) => s.ask)
   const [projectChats, setProjectChats] = useState<Chat[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -194,16 +196,17 @@ export const ProjectDetail = () => {
   }
 
   const handleDeleteChat = async (chatId: string) => {
-    if (
-      window.confirm(
-        'Are you sure you want to delete this chat? This action cannot be undone.'
-      )
-    ) {
-      await deleteChat(chatId)
-      setProjectChats((prev) => prev.filter((chat) => chat.id !== chatId))
-      if (currentProjectId) {
-        adjustChatCount(currentProjectId, -1)
-      }
+    const ok = await confirm({
+      title: 'Delete this chat?',
+      message: 'This action cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    })
+    if (!ok) return
+    await deleteChat(chatId)
+    setProjectChats((prev) => prev.filter((chat) => chat.id !== chatId))
+    if (currentProjectId) {
+      adjustChatCount(currentProjectId, -1)
     }
   }
 

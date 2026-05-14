@@ -4,6 +4,7 @@ import { useChatStore } from '@/stores/chatStore'
 import { useChats } from '@/hooks/useChats'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useModels } from '@/hooks/useModels'
+import { useConfirmStore } from '@/stores/confirmStore'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { useToastStore } from '@/stores/toastStore'
 import { Button } from '../common/Button'
@@ -24,6 +25,7 @@ export const Sidebar = () => {
   const createProject = useProjectsStore((s) => s.createProject)
   const deleteProject = useProjectsStore((s) => s.deleteProject)
   const showToast = useToastStore((s) => s.showToast)
+  const confirm = useConfirmStore((s) => s.ask)
 
   // URL-derived state — used for highlighting the active project + deciding
   // where "go back to chat" navigates after a destructive action.
@@ -69,12 +71,17 @@ export const Sidebar = () => {
   }
 
   const handleDelete = async (chatId: string) => {
-    if (window.confirm('Are you sure you want to delete this chat? This action cannot be undone.')) {
-      await deleteChat(chatId)
-      if (currentChat?.id === chatId) {
-        setCurrentChat(null)
-        navigate('/')
-      }
+    const ok = await confirm({
+      title: 'Delete this chat?',
+      message: 'This action cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    })
+    if (!ok) return
+    await deleteChat(chatId)
+    if (currentChat?.id === chatId) {
+      setCurrentChat(null)
+      navigate('/')
     }
   }
 
@@ -102,11 +109,13 @@ export const Sidebar = () => {
   }
 
   const handleDeleteProject = async (projectId: string, chatCount: number) => {
-    const msg = chatCount > 0
-      ? `Delete this project and its ${chatCount} chat(s)? This action cannot be undone.`
-      : 'Delete this project? This action cannot be undone.'
-
-    if (!window.confirm(msg)) return
+    const ok = await confirm({
+      title: chatCount > 0 ? `Delete this project and its ${chatCount} chat(s)?` : 'Delete this project?',
+      message: 'This action cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    })
+    if (!ok) return
 
     try {
       await deleteProject(projectId)

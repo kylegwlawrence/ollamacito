@@ -1,0 +1,109 @@
+.confirm-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: confirm-dialog-fade 0.12s ease;
+}
+
+.confirm-dialog {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  min-width: 320px;
+  max-width: 480px;
+  margin: 1rem;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  animation: confirm-dialog-scale 0.12s ease;
+}
+
+.confirm-dialog__title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.confirm-dialog__message {
+  margin: 0 0 1.25rem 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.confirm-dialog__button {
+  padding: 0.45rem 0.95rem;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.confirm-dialog__button--secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+}
+
+.confirm-dialog__button--secondary:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.confirm-dialog__button--default {
+  background: var(--accent-color);
+  color: var(--bg-primary);
+  border-color: var(--accent-color);
+}
+
+.confirm-dialog__button--default:hover {
+  opacity: 0.9;
+}
+
+.confirm-dialog__button--danger {
+  background: #c0392b;
+  color: #fff;
+  border-color: #c0392b;
+}
+
+.confirm-dialog__button--danger:hover {
+  background: #a93226;
+  border-color: #a93226;
+}
+
+.confirm-dialog__button:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+@keyframes confirm-dialog-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes confirm-dialog-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

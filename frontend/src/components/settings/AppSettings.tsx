@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useConfirmStore } from '@/stores/confirmStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useToastStore } from '@/stores/toastStore'
 import { useModels } from '@/hooks/useModels'
@@ -13,6 +14,7 @@ export const AppSettings = () => {
   const settingsLoading = useSettingsStore((s) => s.loading)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
   const showToast = useToastStore((s) => s.showToast)
+  const confirm = useConfirmStore((s) => s.ask)
   const { models } = useModels()
 
   const [defaultModel, setDefaultModel] = useState<string>('')
@@ -85,15 +87,15 @@ export const AppSettings = () => {
     }
   }
 
-  const handleBack = () => {
+  const handleBack = async () => {
     if (hasChanges) {
-      if (
-        !window.confirm(
-          'You have unsaved changes. Are you sure you want to leave?'
-        )
-      ) {
-        return
-      }
+      const ok = await confirm({
+        title: 'Discard unsaved changes?',
+        message: 'You have unsaved changes that will be lost if you leave.',
+        confirmLabel: 'Discard',
+        variant: 'danger',
+      })
+      if (!ok) return
     }
     navigate('/')
   }
