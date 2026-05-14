@@ -72,4 +72,11 @@ export const projectApi = {
   deleteFile: async (projectId: string, fileId: string): Promise<void> => {
     await api.delete(`/projects/${projectId}/files/${fileId}`)
   },
+
+  generateMemory: async (projectId: string): Promise<string> => {
+    const { data } = await api.post<{ memory: string }>(
+      `/projects/${projectId}/memory/generate`
+    )
+    return data.memory
+  },
 }

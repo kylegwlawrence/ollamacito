@@ -11,6 +11,7 @@ export interface Project {
   temperature?: number | null
   max_tokens?: number | null
   auto_attach_all_files: boolean
+  memory?: string | null
   rag_enabled: boolean
   rag_server_url: string | null
   rag_corpus_id: string | null
@@ -66,6 +67,7 @@ export interface ProjectUpdate {
   temperature?: number
   max_tokens?: number
   auto_attach_all_files?: boolean
+  memory?: string | null
   rag_enabled?: boolean
   rag_server_url?: string | null
   rag_corpus_id?: string | null
