@@ -52,6 +52,9 @@ class ProjectBase(BaseModel):
         le=50,
         description="Number of chunks to request per query.",
     )
+    memory: Optional[str] = Field(
+        None, description="User-curated project memory document. Injected as the first section of the system prompt on every turn in this project's chats."
+    )
 
     @field_validator("rag_server_url")
     @classmethod
@@ -81,6 +84,7 @@ class ProjectUpdate(BaseModel):
     rag_server_url: Optional[str] = Field(None, max_length=512)
     rag_corpus_id: Optional[str] = Field(None, max_length=100)
     rag_top_k: Optional[int] = Field(None, ge=1, le=50)
+    memory: Optional[str] = Field(None, description="Set to a string to update, or null to clear.")
 
     @field_validator("rag_server_url")
     @classmethod
@@ -151,3 +155,13 @@ class ProjectListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class ProjectMemoryGenerateResponse(BaseModel):
+    """Response from POST /projects/{id}/memory/generate.
+
+    Note: this endpoint does NOT persist the result — the client receives the
+    generated text and submits it via PATCH /projects/{id} if the user clicks Save.
+    """
+
+    memory: str

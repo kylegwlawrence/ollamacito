@@ -45,6 +45,8 @@ class Project(Base, TimestampMixin):
         Boolean, default=False, nullable=False
     )
 
+    memory: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # External RAG-server integration (per-project). See LOCAL_WIKIPEDIA_API.md.
     # When rag_enabled is true, the backend calls /rag/retrieve on rag_server_url
     # for every user message in this project's chats and injects the hits into

@@ -67,6 +67,7 @@ async def list_projects(
                 "temperature": project.temperature,
                 "max_tokens": project.max_tokens,
                 "auto_attach_all_files": project.auto_attach_all_files,
+                "memory": project.memory,
                 "rag_enabled": project.rag_enabled,
                 "rag_server_url": project.rag_server_url,
                 "rag_corpus_id": project.rag_corpus_id,
@@ -124,6 +125,7 @@ async def get_project(
         id=project_with_details.id,
         name=project_with_details.name,
         custom_instructions=project_with_details.custom_instructions,
+        memory=project_with_details.memory,
         default_model=project_with_details.default_model,
         temperature=project_with_details.temperature,
         max_tokens=project_with_details.max_tokens,
@@ -153,6 +155,7 @@ async def create_project(
             user_id=current_user.id,
             name=project_data.name,
             custom_instructions=project_data.custom_instructions,
+            memory=project_data.memory,
             default_model=project_data.default_model,
             temperature=project_data.temperature,
             max_tokens=project_data.max_tokens,
@@ -172,6 +175,7 @@ async def create_project(
             id=new_project.id,
             name=new_project.name,
             custom_instructions=new_project.custom_instructions,
+            memory=new_project.memory,
             default_model=new_project.default_model,
             temperature=new_project.temperature,
             max_tokens=new_project.max_tokens,
@@ -220,6 +224,8 @@ async def update_project(
         project.name = project_data.name
     if "custom_instructions" in fields_set:
         project.custom_instructions = project_data.custom_instructions
+    if "memory" in fields_set:
+        project.memory = project_data.memory
     if project_data.is_archived is not None:
         project.is_archived = project_data.is_archived
     if project_data.default_model is not None:
@@ -257,6 +263,7 @@ async def update_project(
         id=project.id,
         name=project.name,
         custom_instructions=project.custom_instructions,
+        memory=project.memory,
         default_model=project.default_model,
         temperature=project.temperature,
         max_tokens=project.max_tokens,
