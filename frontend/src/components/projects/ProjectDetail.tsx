@@ -467,9 +467,6 @@ export const ProjectDetail = () => {
               options={modelOptions}
               aria-label="Select model for new chats"
             />
-            <Button variant="primary" size="sm" leadingIcon="add" onClick={handleNewChat}>
-              New chat
-            </Button>
           </div>
         }
       />
@@ -480,13 +477,13 @@ export const ProjectDetail = () => {
           <div className="project-detail__section-header">
             <h2>Chats</h2>
           </div>
+          <div className="project-detail__chats-new-btn">
+            <Button variant="primary" size="sm" leadingIcon="add" onClick={handleNewChat}>
+              New chat
+            </Button>
+          </div>
           <div className="project-detail__chats">
-            {projectChats.length === 0 ? (
-              <div className="project-detail__empty">
-                <p>No chats in this project yet.</p>
-                <p>Create a new chat to get started!</p>
-              </div>
-            ) : (
+            {projectChats.length === 0 ? null : (
               projectChats.map((chat) => (
                 <ChatItem
                   key={chat.id}

@@ -137,19 +137,10 @@
   gap: 1px;
 }
 
-.project-detail__empty {
-  text-align: center;
-  padding: var(--s-8) var(--s-4);
-  color: var(--on-surf-2);
-}
-
-.project-detail__empty p {
-  margin: var(--s-1) 0;
-}
-
-.project-detail__empty p:first-child {
-  font-weight: var(--fw-medium);
-  color: var(--on-surf-1);
+.project-detail__chats-new-btn {
+  display: flex;
+  justify-content: center;
+  padding-bottom: var(--s-2);
 }
 
 /* Placeholder */
