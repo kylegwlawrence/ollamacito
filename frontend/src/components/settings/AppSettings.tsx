@@ -261,7 +261,7 @@ export const AppSettings = () => {
             <span id="max-tokens-hint" className="app-settings__hint">
               Maximum tokens the model can generate in one response (Ollama&apos;s{' '}
               <code>num_predict</code>). Must be less than the context window size below,
-              since the window is shared by your prompt and the reply. Default: 2048
+              since the window is shared by your prompt and the reply. Default: 16384
             </span>
             {tokenBudgetError && (
               <span id="max-tokens-error" className="app-settings__error" role="alert">

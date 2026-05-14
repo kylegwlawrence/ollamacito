@@ -45,7 +45,7 @@ async def get_global_settings(
                 default_model=app_settings.default_model,
                 conversation_summarization_model=app_settings.title_generation_model,
                 default_temperature=0.7,
-                default_max_tokens=2048,
+                default_max_tokens=16384,
                 num_ctx=2048,
             )
             db.add(settings)
@@ -86,7 +86,7 @@ async def update_global_settings(
                 default_model=app_settings.default_model,
                 conversation_summarization_model=app_settings.title_generation_model,
                 default_temperature=0.7,
-                default_max_tokens=2048,
+                default_max_tokens=16384,
                 num_ctx=2048,
             )
             db.add(settings)

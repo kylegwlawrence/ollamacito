@@ -86,8 +86,8 @@ export const ProjectDetail = () => {
       setEditedName(currentProject.name)
       setEditedInstructions(currentProject.custom_instructions || '')
       setEditedDefaultModel(currentProject.default_model || '')
-      setEditedTemperature(currentProject.temperature?.toString() || '')
-      setEditedMaxTokens(currentProject.max_tokens?.toString() || '')
+      setEditedTemperature(currentProject.temperature?.toString() ?? settings.default_temperature.toString())
+      setEditedMaxTokens(currentProject.max_tokens?.toString() ?? settings.default_max_tokens.toString())
       setEditedAutoAttachAllFiles(currentProject.auto_attach_all_files)
       setEditedRagEnabled(!!currentProject.rag_enabled)
       setEditedRagServerUrl(currentProject.rag_server_url || '')
@@ -110,8 +110,8 @@ export const ProjectDetail = () => {
       const nameChanged = editedName !== currentProject.name
       const instructionsChanged = editedInstructions !== (currentProject.custom_instructions || '')
       const modelChanged = editedDefaultModel !== (currentProject.default_model || '')
-      const tempChanged = editedTemperature !== (currentProject.temperature?.toString() || '')
-      const tokensChanged = editedMaxTokens !== (currentProject.max_tokens?.toString() || '')
+      const tempChanged = editedTemperature !== (currentProject.temperature?.toString() ?? settings.default_temperature.toString())
+      const tokensChanged = editedMaxTokens !== (currentProject.max_tokens?.toString() ?? settings.default_max_tokens.toString())
       const autoAttachChanged = editedAutoAttachAllFiles !== currentProject.auto_attach_all_files
       const ragEnabledChanged = editedRagEnabled !== !!currentProject.rag_enabled
       const ragUrlChanged = editedRagServerUrl !== (currentProject.rag_server_url || '')
@@ -319,8 +319,8 @@ export const ProjectDetail = () => {
       setEditedName(currentProject.name)
       setEditedInstructions(currentProject.custom_instructions || '')
       setEditedDefaultModel(currentProject.default_model || '')
-      setEditedTemperature(currentProject.temperature?.toString() || '')
-      setEditedMaxTokens(currentProject.max_tokens?.toString() || '')
+      setEditedTemperature(currentProject.temperature?.toString() ?? settings.default_temperature.toString())
+      setEditedMaxTokens(currentProject.max_tokens?.toString() ?? settings.default_max_tokens.toString())
       setEditedAutoAttachAllFiles(currentProject.auto_attach_all_files)
       setEditedRagEnabled(!!currentProject.rag_enabled)
       setEditedRagServerUrl(currentProject.rag_server_url || '')
@@ -586,7 +586,6 @@ export const ProjectDetail = () => {
                       className="project-detail__input"
                       value={editedTemperature}
                       onChange={(e) => setEditedTemperature(e.target.value)}
-                      placeholder={`Global default: ${settings.default_temperature}`}
                       min="0"
                       max="2"
                       step="0.1"
@@ -611,7 +610,6 @@ export const ProjectDetail = () => {
                           setEditedMaxTokens(value)
                         }
                       }}
-                      placeholder={`Global default: ${settings.default_max_tokens}`}
                     />
                     <span className="project-detail__hint">Maximum context window size</span>
                   </div>

@@ -46,7 +46,7 @@ logger = get_logger(__name__)
 
 # Hardcoded fallbacks used when no settings row exists yet.
 _FALLBACK_TEMPERATURE = 0.7
-_FALLBACK_MAX_TOKENS = 2048
+_FALLBACK_MAX_TOKENS = 16384
 _FALLBACK_NUM_CTX = 2048
 
 

@@ -21,7 +21,7 @@ const DEFAULT_SETTINGS: Settings = {
   default_model: '',
   conversation_summarization_model: '',
   default_temperature: 0.7,
-  default_max_tokens: 2048,
+  default_max_tokens: 16384,
   num_ctx: 4096,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),

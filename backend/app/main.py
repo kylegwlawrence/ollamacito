@@ -82,7 +82,7 @@ async def _seed_default_user_and_settings() -> None:
                     default_model=settings.default_model,
                     conversation_summarization_model=settings.title_generation_model,
                     default_temperature=0.7,
-                    default_max_tokens=2048,
+                    default_max_tokens=16384,
                     num_ctx=4096,
                 )
             )
