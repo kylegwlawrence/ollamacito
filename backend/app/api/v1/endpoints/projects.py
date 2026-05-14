@@ -1,6 +1,7 @@
 """
 API endpoints for project management.
 """
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -98,7 +99,7 @@ async def list_projects(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving projects",
-        )
+        ) from e
 
 
 @router.get("/{project_id}", response_model=ProjectWithDetails)
@@ -117,7 +118,11 @@ async def get_project(
         ProjectWithDetails: Project with files
     """
     # Load files for the project
-    query = select(Project).where(Project.id == project.id).options(selectinload(Project.files), selectinload(Project.chats))
+    query = (
+        select(Project)
+        .where(Project.id == project.id)
+        .options(selectinload(Project.files), selectinload(Project.chats))
+    )
     result = await db.execute(query)
     project_with_details = result.scalar_one()
 
@@ -199,7 +204,7 @@ async def create_project(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error creating project",
-        )
+        ) from e
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
@@ -370,10 +375,14 @@ async def get_project_chats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving project chats",
-        )
+        ) from e
 
 
-@router.post("/{project_id}/files", response_model=ProjectFileResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{project_id}/files",
+    response_model=ProjectFileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def upload_file(
     file_data: ProjectFileCreate,
     project: Project = Depends(get_project_or_404),
@@ -392,7 +401,11 @@ async def upload_file(
     """
     try:
         # Generate content preview (first 200 chars)
-        content_preview = file_data.content[:200] if len(file_data.content) > 200 else file_data.content
+        content_preview = (
+            file_data.content[:200]
+            if len(file_data.content) > 200
+            else file_data.content
+        )
 
         # Create file record
         new_file = ProjectFile(
@@ -426,7 +439,7 @@ async def upload_file(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error uploading file",
-        )
+        ) from e
 
 
 @router.get("/{project_id}/files/{file_id}", response_model=ProjectFileResponse)
@@ -479,7 +492,7 @@ async def get_file(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving file",
-        )
+        ) from e
 
 
 @router.post("/{project_id}/rag/info")
@@ -545,7 +558,7 @@ async def delete_file(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error deleting file",
-        )
+        ) from e
 
 
 @router.post(
@@ -611,9 +624,13 @@ async def generate_project_memory(
 
     # Resolve generation model from per-user Settings (same field title-gen uses).
     user_settings = (
-        await db.execute(select(UserSettings).where(UserSettings.user_id == current_user.id))
+        await db.execute(
+            select(UserSettings).where(UserSettings.user_id == current_user.id)
+        )
     ).scalar_one_or_none()
-    gen_model = user_settings.conversation_summarization_model if user_settings else None
+    gen_model = (
+        user_settings.conversation_summarization_model if user_settings else None
+    )
 
     logger.info(
         f"Generating memory for project {project.id} from {len(transcript_parts)} chat(s) "

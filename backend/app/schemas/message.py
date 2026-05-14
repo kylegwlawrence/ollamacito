@@ -1,6 +1,7 @@
 """
 Pydantic schemas for Message API.
 """
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -30,7 +31,9 @@ class MessageCreate(BaseModel):
     """Schema for creating a new message (sending user message)."""
 
     content: str = Field(..., min_length=1)
-    file_ids: List[UUID] = Field(default_factory=list, description="List of project file IDs to attach")
+    file_ids: List[UUID] = Field(
+        default_factory=list, description="List of project file IDs to attach"
+    )
 
 
 class MessageResponse(MessageBase):

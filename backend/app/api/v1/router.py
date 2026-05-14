@@ -1,6 +1,7 @@
 """
 API v1 router combining all endpoint routers.
 """
+
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import chats, messages, models, projects, settings

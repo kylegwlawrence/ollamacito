@@ -2,9 +2,9 @@
 Logging configuration for the application.
 Uses structured JSON logging for production and colored console logging for development.
 """
+
 import logging
 import sys
-from typing import Any
 
 from pythonjsonlogger import jsonlogger
 
@@ -24,9 +24,15 @@ class ColoredFormatter(logging.Formatter):
     FORMATS = {
         logging.DEBUG: grey + "%(asctime)s %(levelname)s" + reset + " - %(message)s",
         logging.INFO: blue + "%(asctime)s %(levelname)s" + reset + " - %(message)s",
-        logging.WARNING: yellow + "%(asctime)s %(levelname)s" + reset + " - %(message)s",
+        logging.WARNING: yellow
+        + "%(asctime)s %(levelname)s"
+        + reset
+        + " - %(message)s",
         logging.ERROR: red + "%(asctime)s %(levelname)s" + reset + " - %(message)s",
-        logging.CRITICAL: bold_red + "%(asctime)s %(levelname)s" + reset + " - %(message)s",
+        logging.CRITICAL: bold_red
+        + "%(asctime)s %(levelname)s"
+        + reset
+        + " - %(message)s",
     }
 
     def format(self, record):
@@ -36,10 +42,13 @@ class ColoredFormatter(logging.Formatter):
         result = formatter.format(record)
         # Insert milliseconds after the seconds
         import datetime
+
         dt = datetime.datetime.fromtimestamp(record.created)
         ms = f".{int((record.created % 1) * 1000):03d}"
         # Replace first occurrence of time format with time+ms
-        result = result.replace(dt.strftime("%H:%M:%S"), dt.strftime("%H:%M:%S") + ms, 1)
+        result = result.replace(
+            dt.strftime("%H:%M:%S"), dt.strftime("%H:%M:%S") + ms, 1
+        )
         return result
 
 

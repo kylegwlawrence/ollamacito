@@ -1,6 +1,7 @@
 """
 Pydantic schemas for Chat API.
 """
+
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
@@ -18,7 +19,9 @@ class ChatBase(BaseModel):
 class ChatCreate(ChatBase):
     """Schema for creating a new chat."""
 
-    project_id: Optional[UUID] = Field(None, description="Optional project ID to associate chat with")
+    project_id: Optional[UUID] = Field(
+        None, description="Optional project ID to associate chat with"
+    )
     agent_mode_enabled: bool = Field(
         default=False,
         description="When true, use the agentic chat endpoint (search_wikipedia tool)."
@@ -40,7 +43,9 @@ class ChatResponse(ChatBase):
 
     id: UUID
     is_archived: bool
-    project_id: Optional[UUID] = Field(None, description="Project ID if chat belongs to a project")
+    project_id: Optional[UUID] = Field(
+        None, description="Project ID if chat belongs to a project"
+    )
     agent_mode_enabled: bool = False
     created_at: datetime
     updated_at: datetime
@@ -67,7 +72,7 @@ class ChatListResponse(BaseModel):
     total_pages: int
 
 
-# Forward reference resolution
-from app.schemas.message import MessageResponse
+# Forward reference resolution (must be after ChatWithMessagesResponse is defined)
+from app.schemas.message import MessageResponse  # noqa: E402
 
 ChatWithMessagesResponse.model_rebuild()

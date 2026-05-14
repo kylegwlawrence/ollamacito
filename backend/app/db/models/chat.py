@@ -1,8 +1,9 @@
 """
 Database models for chats and messages.
 """
+
 import uuid
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -10,13 +11,29 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
 
+if TYPE_CHECKING:
+    from app.db.models.project import Project, ProjectFile
+    from app.db.models.settings import ChatSettings
+    from app.db.models.user import User
 
 # Junction table for many-to-many relationship between messages and files
 message_files = Table(
     "message_files",
     Base.metadata,
-    Column("message_id", UUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True, nullable=False),
-    Column("file_id", UUID(as_uuid=True), ForeignKey("project_files.id", ondelete="CASCADE"), primary_key=True, nullable=False),
+    Column(
+        "message_id",
+        UUID(as_uuid=True),
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    ),
+    Column(
+        "file_id",
+        UUID(as_uuid=True),
+        ForeignKey("project_files.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    ),
 )
 
 
@@ -48,7 +65,9 @@ class Chat(Base, TimestampMixin):
     # Agent mode: when true, /chats/{id}/agent is used instead of /stream and the
     # model is given tools (search_wikipedia for v1) it can invoke autonomously.
     # Requires the chat's project to have rag_enabled + full RAG config.
-    agent_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    agent_mode_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="chats")

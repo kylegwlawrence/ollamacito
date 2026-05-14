@@ -1,9 +1,10 @@
 """
 Pydantic schemas for Ollama API.
 """
+
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class OllamaModel(BaseModel):

@@ -1,6 +1,7 @@
 """
 API endpoints for message management and streaming.
 """
+
 import asyncio
 import json
 import uuid as uuid_lib
@@ -66,9 +67,7 @@ async def _load_cascade(session: AsyncSession, chat: Chat) -> _Cascade:
     title-generation model from the Settings row when present.
     """
     global_settings = (
-        await session.execute(
-            select(Settings).where(Settings.user_id == chat.user_id)
-        )
+        await session.execute(select(Settings).where(Settings.user_id == chat.user_id))
     ).scalar_one_or_none()
 
     chat_settings = (
@@ -110,7 +109,9 @@ async def _load_cascade(session: AsyncSession, chat: Chat) -> _Cascade:
     else:
         num_ctx = _FALLBACK_NUM_CTX
 
-    title_model = global_settings.conversation_summarization_model if global_settings else None
+    title_model = (
+        global_settings.conversation_summarization_model if global_settings else None
+    )
 
     return _Cascade(
         temperature=temperature,
@@ -236,7 +237,9 @@ async def _maybe_retrieve_rag(
 
     info, retrieve = await asyncio.gather(
         rag_service.get_info(base_url),
-        rag_service.retrieve(base_url=base_url, query=user_message, corpus=corpus, top_k=top_k),
+        rag_service.retrieve(
+            base_url=base_url, query=user_message, corpus=corpus, top_k=top_k
+        ),
     )
 
     raw_hits = retrieve.get("hits", []) or []
@@ -349,9 +352,7 @@ async def generate_and_update_title(chat_id: UUID, title_model: Optional[str]) -
             assistant_contents = [m.content for m in assistant_messages]
 
             if not user_contents or not assistant_contents:
-                logger.warning(
-                    f"Title-gen: insufficient messages in chat {chat_id}"
-                )
+                logger.warning(f"Title-gen: insufficient messages in chat {chat_id}")
                 return
 
             title: Optional[str] = None
@@ -389,7 +390,9 @@ async def generate_and_update_title(chat_id: UUID, title_model: Optional[str]) -
                     f"Title-gen: invalid title for chat {chat_id}; keeping default"
                 )
     except Exception as e:
-        logger.error(f"Unexpected error in generate_and_update_title for chat {chat_id}: {e}")
+        logger.error(
+            f"Unexpected error in generate_and_update_title for chat {chat_id}: {e}"
+        )
 
 
 @router.get("/{chat_id}/messages", response_model=MessageListResponse)
@@ -497,10 +500,7 @@ async def _prepare_stream(
                 "Attaching %d file(s) to chat %s: %s",
                 len(attached_files),
                 chat_id,
-                [
-                    f"{f.filename} ({len(f.content or '')}c)"
-                    for f in attached_files
-                ],
+                [f"{f.filename} ({len(f.content or '')}c)" for f in attached_files],
             )
         else:
             logger.info("No files attached to chat %s for this turn", chat_id)
@@ -620,12 +620,17 @@ async def stream_chat_response(
         f"message: '{body.content[:50]}...'"
     )
 
-    chat, cascade, ollama_messages, model_name, rag_citations, _project = await _prepare_stream(
-        chat_id, current_user.id, body.content, body.file_ids
+    chat, cascade, ollama_messages, model_name, rag_citations, _project = (
+        await _prepare_stream(chat_id, current_user.id, body.content, body.file_ids)
     )
 
     async def event_generator() -> AsyncGenerator[bytes, None]:
-        if chat is None or cascade is None or ollama_messages is None or model_name is None:
+        if (
+            chat is None
+            or cascade is None
+            or ollama_messages is None
+            or model_name is None
+        ):
             yield _ndjson({"type": "error", "message": f"Chat {chat_id} not found"})
             return
 
@@ -680,9 +685,7 @@ async def stream_chat_response(
                     f"(truncated={is_truncated})"
                 )
         except Exception as e:
-            logger.error(
-                f"[Req {request_id}] Failed to persist assistant message: {e}"
-            )
+            logger.error(f"[Req {request_id}] Failed to persist assistant message: {e}")
 
         # Emit final frame. Errors are terminal; success carries the truncated
         # flag so the FE can render a "regenerate" affordance on partial responses.
@@ -694,9 +697,7 @@ async def stream_chat_response(
         # First successful assistant turn → kick off title generation in the
         # background so it never blocks the `done` frame above.
         if assistant_count == 1 and not is_truncated:
-            asyncio.create_task(
-                generate_and_update_title(chat_id, cascade.title_model)
-            )
+            asyncio.create_task(generate_and_update_title(chat_id, cascade.title_model))
 
     return StreamingResponse(
         event_generator(),
@@ -825,9 +826,7 @@ async def stream_agent_response(
         # Trigger title generation on the first successful assistant turn,
         # same rule as /stream.
         if assistant_count == 1 and not is_truncated:
-            asyncio.create_task(
-                generate_and_update_title(chat_id, cascade.title_model)
-            )
+            asyncio.create_task(generate_and_update_title(chat_id, cascade.title_model))
 
     return StreamingResponse(
         event_generator(),

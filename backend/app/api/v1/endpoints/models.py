@@ -1,6 +1,7 @@
 """
 API endpoints for Ollama model management.
 """
+
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.logging import get_logger
@@ -35,13 +36,13 @@ async def list_ollama_models():
                 "suggestion": "Please ensure Ollama is running locally",
                 "url": ollama_service.base_url,
             },
-        )
+        ) from e
     except Exception as e:
         logger.error(f"Unexpected error retrieving models: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving models",
-        )
+        ) from e
 
 
 @router.get("/status", response_model=OllamaStatusResponse)

@@ -1,6 +1,7 @@
 """
 Pydantic schemas for Settings API.
 """
+
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -22,7 +23,9 @@ class SettingsUpdate(BaseModel):
     """Schema for updating global settings."""
 
     default_model: Optional[str] = Field(None, min_length=1, max_length=100)
-    conversation_summarization_model: Optional[str] = Field(None, min_length=1, max_length=100)
+    conversation_summarization_model: Optional[str] = Field(
+        None, min_length=1, max_length=100
+    )
     default_temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     default_max_tokens: Optional[int] = Field(None, gt=0)
     num_ctx: Optional[int] = Field(None, gt=0)

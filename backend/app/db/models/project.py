@@ -1,14 +1,27 @@
 """
 Database models for projects and project files.
 """
-import uuid
-from typing import List, Optional
 
-from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Integer, String, Text
+import uuid
+from typing import TYPE_CHECKING, List, Optional
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.db.models.chat import Chat
+    from app.db.models.user import User
 
 
 class Project(Base, TimestampMixin):

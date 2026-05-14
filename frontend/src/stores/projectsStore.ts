@@ -36,7 +36,7 @@ interface ProjectsStore {
   adjustChatCount: (id: string, delta: number) => void
 }
 
-export const useProjectsStore = create<ProjectsStore>((set, get) => ({
+export const useProjectsStore = create<ProjectsStore>((set, _get) => ({
   projects: [],
   loading: true,
   loaded: false,

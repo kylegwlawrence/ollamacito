@@ -2,6 +2,7 @@
 Application configuration using Pydantic Settings.
 Loads configuration from environment variables.
 """
+
 from typing import List, Optional, Union
 
 from pydantic import Field, field_validator
@@ -29,10 +30,14 @@ class Settings(BaseSettings):
         description="PostgreSQL connection URL (takes precedence over individual components)",
     )
     postgres_user: str = Field(default="postgres", description="PostgreSQL user")
-    postgres_password: str = Field(default="postgres", description="PostgreSQL password")
+    postgres_password: str = Field(
+        default="postgres", description="PostgreSQL password"
+    )
     postgres_host: str = Field(default="localhost", description="PostgreSQL host")
     postgres_port: int = Field(default=5432, description="PostgreSQL port")
-    postgres_db: str = Field(default="ollama_chat", description="PostgreSQL database name")
+    postgres_db: str = Field(
+        default="ollama_chat", description="PostgreSQL database name"
+    )
 
     # Ollama Settings
     ollama_base_url: str = Field(

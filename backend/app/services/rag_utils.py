@@ -5,6 +5,7 @@ These functions are used by both the pre-stream auto-RAG flow in
 `messages.py` and the agentic `search_wikipedia` tool in
 `agent_service.py`. Pure / stateless.
 """
+
 from typing import Dict, List
 
 

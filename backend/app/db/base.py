@@ -1,8 +1,8 @@
 """
 SQLAlchemy declarative base and base model class.
 """
+
 from datetime import datetime, timezone
-from typing import Any
 
 from sqlalchemy import DateTime
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column

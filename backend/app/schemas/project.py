@@ -1,6 +1,7 @@
 """
 Pydantic schemas for project-related operations.
 """
+
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
@@ -16,7 +17,10 @@ class ProjectBase(BaseModel):
         None, description="Custom instructions for the AI in this project"
     )
     default_model: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Default model for new chats in this project"
+        None,
+        min_length=1,
+        max_length=100,
+        description="Default model for new chats in this project",
     )
     temperature: Optional[float] = Field(
         None, ge=0.0, le=2.0, description="Temperature override for this project"
@@ -53,7 +57,8 @@ class ProjectBase(BaseModel):
         description="Number of chunks to request per query.",
     )
     memory: Optional[str] = Field(
-        None, description="User-curated project memory document. Injected as the first section of the system prompt on every turn in this project's chats."
+        None,
+        description="User-curated project memory document. Injected as the first section of the system prompt on every turn in this project's chats.",
     )
 
     @field_validator("rag_server_url")
@@ -84,7 +89,9 @@ class ProjectUpdate(BaseModel):
     rag_server_url: Optional[str] = Field(None, max_length=512)
     rag_corpus_id: Optional[str] = Field(None, max_length=100)
     rag_top_k: Optional[int] = Field(None, ge=1, le=50)
-    memory: Optional[str] = Field(None, description="Set to a string to update, or null to clear.")
+    memory: Optional[str] = Field(
+        None, description="Set to a string to update, or null to clear."
+    )
 
     @field_validator("rag_server_url")
     @classmethod
@@ -135,8 +142,12 @@ class ProjectResponse(ProjectBase):
     is_archived: bool
     created_at: datetime
     updated_at: datetime
-    chat_count: Optional[int] = Field(None, description="Number of chats in this project")
-    file_count: Optional[int] = Field(None, description="Number of files in this project")
+    chat_count: Optional[int] = Field(
+        None, description="Number of chats in this project"
+    )
+    file_count: Optional[int] = Field(
+        None, description="Number of files in this project"
+    )
 
     model_config = {"from_attributes": True}
 

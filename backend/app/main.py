@@ -1,6 +1,7 @@
 """
 Main FastAPI application entry point.
 """
+
 import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -250,7 +251,7 @@ async def health_check():
         dict: Health status
     """
     try:
-        ollama_connected = await ollama_service.check_health()
+        await ollama_service.check_health()
         return {
             "status": "healthy",
             "ollama_connected": True,

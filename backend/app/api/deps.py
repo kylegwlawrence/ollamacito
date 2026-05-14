@@ -1,6 +1,7 @@
 """
 FastAPI dependency injection functions.
 """
+
 from typing import Annotated, AsyncGenerator
 from uuid import UUID
 

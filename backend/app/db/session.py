@@ -4,6 +4,7 @@ Database session management with async SQLAlchemy.
 Note: the `get_db` request dependency lives in `app.api.deps`. This module
 only owns the engine and session factory.
 """
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings

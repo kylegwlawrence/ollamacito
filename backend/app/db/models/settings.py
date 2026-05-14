@@ -1,6 +1,7 @@
 """
 Database models for application and chat settings.
 """
+
 import uuid
 from typing import TYPE_CHECKING, Optional
 
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.db.models.chat import Chat
     from app.db.models.user import User
 
 

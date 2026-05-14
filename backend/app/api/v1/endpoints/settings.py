@@ -1,6 +1,7 @@
 """
 API endpoints for settings management.
 """
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -62,7 +63,7 @@ async def get_global_settings(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving settings",
-        )
+        ) from e
 
 
 @router.patch("/settings", response_model=SettingsResponse)
@@ -93,7 +94,9 @@ async def update_global_settings(
         if settings_data.default_model is not None:
             settings.default_model = settings_data.default_model
         if settings_data.conversation_summarization_model is not None:
-            settings.conversation_summarization_model = settings_data.conversation_summarization_model
+            settings.conversation_summarization_model = (
+                settings_data.conversation_summarization_model
+            )
         if settings_data.default_temperature is not None:
             settings.default_temperature = settings_data.default_temperature
         if settings_data.default_max_tokens is not None:
@@ -113,7 +116,7 @@ async def update_global_settings(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error updating settings",
-        )
+        ) from e
 
 
 @router.get("/chats/{chat_id}/settings", response_model=ChatSettingsResponse)

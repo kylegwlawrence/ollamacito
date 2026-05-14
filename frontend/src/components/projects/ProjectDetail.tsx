@@ -65,6 +65,10 @@ export const ProjectDetail = () => {
     if (currentProjectId) {
       loadProjectData()
     }
+    // loadProjectData is a closure over state setters — including it here would
+    // re-run the effect on every render. We only want to reload when the
+    // project id changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProjectId])
 
   // Initialize the selector from project / global default, but ONLY when those

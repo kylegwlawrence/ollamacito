@@ -7,6 +7,7 @@ The RAG server is treated as a black-box HTTP service exposing:
 
 See LOCAL_WIKIPEDIA_API.md at the repo root for the wire contract.
 """
+
 from typing import Dict, Optional
 
 import httpx
@@ -91,13 +92,17 @@ class RagService:
             raise RagConnectionError(url, str(e)) from e
 
         if 500 <= response.status_code < 600:
-            raise RagConnectionError(url, f"HTTP {response.status_code} from /rag/retrieve")
+            raise RagConnectionError(
+                url, f"HTTP {response.status_code} from /rag/retrieve"
+            )
         if response.status_code == 404:
             raise RagCorpusNotFoundError(corpus, url=url)
         if response.status_code == 422:
             raise RagValidationError(response.text, url=url)
         if response.status_code >= 400:
-            raise RagConnectionError(url, f"HTTP {response.status_code} from /rag/retrieve")
+            raise RagConnectionError(
+                url, f"HTTP {response.status_code} from /rag/retrieve"
+            )
 
         return response.json()
 

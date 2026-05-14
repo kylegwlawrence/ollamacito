@@ -1,6 +1,7 @@
 """
 API endpoints for chat management.
 """
+
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -87,7 +88,7 @@ async def list_chats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving chats",
-        )
+        ) from e
 
 
 @router.get("/{chat_id}", response_model=ChatWithMessagesResponse)
@@ -172,7 +173,7 @@ async def create_chat(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error creating chat",
-        )
+        ) from e
 
 
 @router.patch("/{chat_id}", response_model=ChatResponse)
@@ -197,9 +198,7 @@ async def update_chat(
     logger.info(f"Updated chat {chat.id}")
 
     message_count = (
-        await db.execute(
-            select(func.count()).where(Message.chat_id == chat.id)
-        )
+        await db.execute(select(func.count()).where(Message.chat_id == chat.id))
     ).scalar() or 0
 
     return ChatResponse(
@@ -240,9 +239,7 @@ async def archive_chat(
     logger.info(f"Archived chat {chat.id}")
 
     message_count = (
-        await db.execute(
-            select(func.count()).where(Message.chat_id == chat.id)
-        )
+        await db.execute(select(func.count()).where(Message.chat_id == chat.id))
     ).scalar() or 0
 
     return ChatResponse(

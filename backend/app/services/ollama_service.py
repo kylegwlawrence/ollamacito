@@ -1,12 +1,11 @@
 """
 Service for interacting with Ollama API.
 """
-import json
+
 from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Optional
 
 import httpx
-import ollama
 from ollama import AsyncClient
 
 from app.core.config import settings
@@ -46,10 +45,12 @@ class OllamaService:
                 return True
         except httpx.RequestError as e:
             logger.error(f"Ollama connection error: {e}")
-            raise OllamaConnectionError(self.base_url, str(e))
+            raise OllamaConnectionError(self.base_url, str(e)) from e
         except httpx.HTTPStatusError as e:
             logger.error(f"Ollama HTTP error: {e}")
-            raise OllamaConnectionError(self.base_url, f"HTTP {e.response.status_code}")
+            raise OllamaConnectionError(
+                self.base_url, f"HTTP {e.response.status_code}"
+            ) from e
 
     async def get_models(self) -> List[Dict]:
         """
@@ -68,7 +69,7 @@ class OllamaService:
             return models
         except Exception as e:
             logger.error(f"Error retrieving models: {e}")
-            raise OllamaConnectionError(self.base_url, str(e))
+            raise OllamaConnectionError(self.base_url, str(e)) from e
 
     async def check_model_exists(self, model_name: str) -> bool:
         """
@@ -159,9 +160,9 @@ class OllamaService:
             error_str = str(e).lower()
             if "not found" in error_str or "does not exist" in error_str:
                 logger.error(f"Model '{model}' not found")
-                raise OllamaModelNotFoundError(model)
+                raise OllamaModelNotFoundError(model) from e
             logger.error(f"Error in chat request: {e}")
-            raise OllamaConnectionError(self.base_url, str(e))
+            raise OllamaConnectionError(self.base_url, str(e)) from e
 
     async def stream_chat(
         self,
@@ -212,9 +213,9 @@ class OllamaService:
             error_str = str(e).lower()
             if "not found" in error_str or "does not exist" in error_str:
                 logger.error(f"Model '{model}' not found")
-                raise OllamaModelNotFoundError(model)
+                raise OllamaModelNotFoundError(model) from e
             logger.error(f"Error in streaming chat: {e}")
-            raise OllamaConnectionError(self.base_url, str(e))
+            raise OllamaConnectionError(self.base_url, str(e)) from e
         finally:
             # Best-effort cleanup when the caller cancels mid-stream.
             close = getattr(stream, "aclose", None)
@@ -287,10 +288,17 @@ class OllamaService:
                 if i < len(user_messages):
                     messages.append({"role": "user", "content": user_messages[i]})
                 if i < len(assistant_messages):
-                    messages.append({"role": "assistant", "content": assistant_messages[i]})
+                    messages.append(
+                        {"role": "assistant", "content": assistant_messages[i]}
+                    )
 
             # Ask for title generation
-            messages.append({"role": "user", "content": "Generate a short title for this conversation."})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "Generate a short title for this conversation.",
+                }
+            )
 
             logger.info(f"Generating title using model '{title_model}'")
 
@@ -316,7 +324,7 @@ class OllamaService:
                 return "New Chat"
 
             # Clean up the title (remove quotes, extra whitespace, newlines)
-            title = title.replace('"', '').replace("'", "").replace("\n", " ").strip()
+            title = title.replace('"', "").replace("'", "").replace("\n", " ").strip()
 
             # Limit title length to 50 characters for safety
             if len(title) > 50:
@@ -329,9 +337,9 @@ class OllamaService:
             error_str = str(e).lower()
             if "not found" in error_str or "does not exist" in error_str:
                 logger.error(f"Title generation model '{title_model}' not found")
-                raise OllamaModelNotFoundError(title_model)
+                raise OllamaModelNotFoundError(title_model) from e
             logger.error(f"Error in title generation: {e}")
-            raise OllamaConnectionError(self.base_url, str(e))
+            raise OllamaConnectionError(self.base_url, str(e)) from e
 
     def _load_memory_prompt(self) -> str:
         """Load the memory-generation prompt template (with `{transcript}` placeholder)."""
@@ -412,9 +420,9 @@ class OllamaService:
             error_str = str(e).lower()
             if "not found" in error_str or "does not exist" in error_str:
                 logger.error(f"Memory generation model '{gen_model}' not found")
-                raise OllamaModelNotFoundError(gen_model)
+                raise OllamaModelNotFoundError(gen_model) from e
             logger.error(f"Error in memory generation: {e}")
-            raise OllamaConnectionError(self.base_url, str(e))
+            raise OllamaConnectionError(self.base_url, str(e)) from e
 
 
 # Create global instance

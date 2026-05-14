@@ -22,6 +22,7 @@ refine. Citations are aggregated across all invocations so the assistant message
 still ends up with one consolidated rag_citations payload (same shape as the
 non-agent flow).
 """
+
 import json
 import uuid as uuid_lib
 from dataclasses import dataclass, field
@@ -182,7 +183,9 @@ async def _ollama_chat_stream(
                 try:
                     data = json.loads(line)
                 except json.JSONDecodeError:
-                    logger.warning("Skipping malformed Ollama stream line: %s", line[:80])
+                    logger.warning(
+                        "Skipping malformed Ollama stream line: %s", line[:80]
+                    )
                     continue
                 msg = data.get("message", {})
                 content = msg.get("content", "")
@@ -209,7 +212,9 @@ async def _execute_search_wikipedia(
     """
     query = args.get("query")
     if not isinstance(query, str) or not query.strip():
-        raise ValueError("Missing or empty 'query' argument (expected a non-empty string).")
+        raise ValueError(
+            "Missing or empty 'query' argument (expected a non-empty string)."
+        )
 
     capped_top_k = min(_TOOL_TOP_K_CAP, project.rag_top_k or _TOOL_TOP_K_CAP)
 
@@ -223,10 +228,12 @@ async def _execute_search_wikipedia(
     deduped = dedupe_hits_by_page(raw_hits, keep_per_page=2)[:capped_top_k]
     used_dense = bool(raw.get("used_dense", False))
 
-    tool_text = format_rag_context({
-        "corpus": project.rag_corpus_id,
-        "hits": deduped,
-    })
+    tool_text = format_rag_context(
+        {
+            "corpus": project.rag_corpus_id,
+            "hits": deduped,
+        }
+    )
     if not tool_text:
         tool_text = f"No results found for query: {query!r}"
 
@@ -306,9 +313,9 @@ async def run_agent(
 
     # Prepend the agent system directive. If there's already a system message
     # from project custom instructions etc., this stacks on top of it.
-    messages: List[Dict[str, Any]] = (
-        [{"role": "system", "content": AGENT_SYSTEM_PROMPT}] + list(initial_messages)
-    )
+    messages: List[Dict[str, Any]] = [
+        {"role": "system", "content": AGENT_SYSTEM_PROMPT}
+    ] + list(initial_messages)
     agent_options = _agent_options(options)
 
     aggregated_hits: List[Dict[str, Any]] = []
@@ -397,11 +404,13 @@ async def run_agent(
 
         # Record the assistant's tool-calling turn in the conversation so the
         # next iteration sees it. Ollama expects this shape on subsequent calls.
-        messages.append({
-            "role": "assistant",
-            "content": msg_content,
-            "tool_calls": tool_calls,
-        })
+        messages.append(
+            {
+                "role": "assistant",
+                "content": msg_content,
+                "tool_calls": tool_calls,
+            }
+        )
 
         for tc in tool_calls:
             tc_id = uuid_lib.uuid4().hex[:12]
@@ -429,11 +438,21 @@ async def run_agent(
             handler = TOOLS.get(tool_name)
             if handler is None:
                 err_msg = f"Unknown tool: {tool_name}"
-                yield {"type": "tool_result", "id": tc_id, "ok": False, "error": err_msg}
-                result.tool_calls_audit.append({
-                    "id": tc_id, "name": tool_name, "input": tool_input,
-                    "ok": False, "error": err_msg,
-                })
+                yield {
+                    "type": "tool_result",
+                    "id": tc_id,
+                    "ok": False,
+                    "error": err_msg,
+                }
+                result.tool_calls_audit.append(
+                    {
+                        "id": tc_id,
+                        "name": tool_name,
+                        "input": tool_input,
+                        "ok": False,
+                        "error": err_msg,
+                    }
+                )
                 messages.append({"role": "tool", "content": f"Tool error: {err_msg}"})
                 continue
 
@@ -442,20 +461,40 @@ async def run_agent(
                 aggregated_hits.extend(new_hits)
                 used_dense_any = used_dense_any or used_dense
                 summary = f"{len(new_hits)} result{'s' if len(new_hits) != 1 else ''}"
-                yield {"type": "tool_result", "id": tc_id, "ok": True, "summary": summary}
-                result.tool_calls_audit.append({
-                    "id": tc_id, "name": tool_name, "input": tool_input,
-                    "ok": True, "summary": summary,
-                })
+                yield {
+                    "type": "tool_result",
+                    "id": tc_id,
+                    "ok": True,
+                    "summary": summary,
+                }
+                result.tool_calls_audit.append(
+                    {
+                        "id": tc_id,
+                        "name": tool_name,
+                        "input": tool_input,
+                        "ok": True,
+                        "summary": summary,
+                    }
+                )
                 messages.append({"role": "tool", "content": tool_text})
             except Exception as e:
                 err_msg = str(e) or e.__class__.__name__
                 logger.warning("Tool %s failed: %s", tool_name, err_msg)
-                yield {"type": "tool_result", "id": tc_id, "ok": False, "error": err_msg}
-                result.tool_calls_audit.append({
-                    "id": tc_id, "name": tool_name, "input": tool_input,
-                    "ok": False, "error": err_msg,
-                })
+                yield {
+                    "type": "tool_result",
+                    "id": tc_id,
+                    "ok": False,
+                    "error": err_msg,
+                }
+                result.tool_calls_audit.append(
+                    {
+                        "id": tc_id,
+                        "name": tool_name,
+                        "input": tool_input,
+                        "ok": False,
+                        "error": err_msg,
+                    }
+                )
                 messages.append({"role": "tool", "content": f"Tool error: {err_msg}"})
 
     # Iteration cap hit — force a final answer with no tools available.

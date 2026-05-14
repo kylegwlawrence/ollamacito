@@ -21,6 +21,7 @@ import { AppSettings } from './components/settings/AppSettings'
  * route. Each route also gets its own ErrorBoundary so a crash in one
  * view does not blow away the sidebar.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 const RootLayout = () => {
   return (
     <>

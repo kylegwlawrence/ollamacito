@@ -6,6 +6,7 @@ multi-user auth in cleanly. Until Phase 7 wires real login, the
 `get_current_user` dependency returns a singleton "default user" row (id =
 `DEFAULT_USER_ID` below) so all existing single-user behavior keeps working.
 """
+
 import uuid
 from typing import TYPE_CHECKING, List, Optional
 
@@ -42,7 +43,9 @@ class User(Base, TimestampMixin):
         primary_key=True,
         default=uuid.uuid4,
     )
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(
+        String(255), unique=True, nullable=False, index=True
+    )
     # Nullable so the seeded default user can exist without a credential
     # while AUTH_ENABLED=false. Phase 7 will populate it on first real login.
     hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
