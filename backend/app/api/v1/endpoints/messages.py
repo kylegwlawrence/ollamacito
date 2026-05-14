@@ -33,8 +33,10 @@ from app.schemas.message import (
     MessageResponse,
     StreamMessageRequest,
 )
+from app.services.agent_service import AgentRunResult, run_agent
 from app.services.ollama_service import ollama_service
 from app.services.rag_service import rag_service
+from app.services.rag_utils import dedupe_hits_by_page, format_rag_context
 from app.utils.exceptions import OllamaConnectionError
 
 router = APIRouter()
@@ -118,37 +120,6 @@ async def _load_cascade(session: AsyncSession, chat: Chat) -> _Cascade:
     )
 
 
-def _format_rag_context(rag_response: Dict) -> str:
-    """
-    Build the system-prompt block for RAG-retrieved chunks.
-
-    Header format `[Title]` or `[Title § Section]` is required (the embedder
-    saw these headers during indexing). See LOCAL_WIKIPEDIA_API.md §
-    "Prompt assembly pattern that works".
-    """
-    corpus = rag_response.get("corpus", "")
-    hits = rag_response.get("hits", [])
-    if not hits:
-        return ""
-
-    blocks: List[str] = []
-    for hit in hits:
-        header = hit.get("title", "(untitled)")
-        section = hit.get("section")
-        if section:
-            header = f"{header} § {section}"
-        text = hit.get("text", "")
-        blocks.append(f"[{header}]\n{text}")
-
-    body = "\n\n---\n\n".join(blocks)
-    return (
-        f"RETRIEVED CONTEXT (from {corpus}):\n\n"
-        f"{body}\n\n"
-        "Use only this context to answer the user's question. "
-        "Cite sources by their bracketed title. If the answer isn't in the context, say so."
-    )
-
-
 async def _build_ollama_messages(
     session: AsyncSession,
     chat: Chat,
@@ -200,7 +171,7 @@ async def _build_ollama_messages(
         system_prompt_parts.append("")
 
     if rag_response and rag_response.get("hits"):
-        rag_block = _format_rag_context(rag_response)
+        rag_block = format_rag_context(rag_response)
         if rag_block:
             system_prompt_parts.append(rag_block)
             system_prompt_parts.append("")
@@ -224,25 +195,6 @@ async def _build_ollama_messages(
 
     ollama_messages.append({"role": "user", "content": user_message_content})
     return ollama_messages
-
-
-def _dedupe_hits_by_page(hits: List[Dict], keep_per_page: int = 2) -> List[Dict]:
-    """
-    Deduplicate retrieved hits by `page_id`, keeping at most `keep_per_page` per page.
-    Pattern from LOCAL_WIKIPEDIA_API.md § "Deduplication and reranking".
-    """
-    seen: Dict[int, int] = {}
-    out: List[Dict] = []
-    for hit in hits:
-        page_id = hit.get("page_id")
-        if page_id is None:
-            out.append(hit)
-            continue
-        count = seen.get(page_id, 0)
-        if count < keep_per_page:
-            out.append(hit)
-            seen[page_id] = count + 1
-    return out
 
 
 async def _maybe_retrieve_rag(
@@ -283,7 +235,7 @@ async def _maybe_retrieve_rag(
     )
 
     raw_hits = retrieve.get("hits", []) or []
-    deduped = _dedupe_hits_by_page(raw_hits, keep_per_page=2)[:top_k]
+    deduped = dedupe_hits_by_page(raw_hits, keep_per_page=2)[:top_k]
     used_dense = bool(retrieve.get("used_dense", False))
 
     prompt_payload = {
@@ -497,12 +449,14 @@ async def _prepare_stream(
     user_id: UUID,
     user_message: str,
     file_ids: Optional[List[UUID]],
+    skip_rag: bool = False,
 ) -> Tuple[
     Optional[Chat],
     Optional[_Cascade],
     Optional[List[Dict[str, str]]],
     Optional[str],
     Optional[Dict],
+    Optional[Project],
 ]:
     """
     Open a setup session, load cascade + history, resolve attached files,
@@ -515,7 +469,12 @@ async def _prepare_stream(
 
     RAG retrieval happens BEFORE the user-message commit so that a RAG-server
     failure surfaces as a regular HTTP error response (503/422) without
-    half-committing state.
+    half-committing state. Pass `skip_rag=True` for the agent endpoint —
+    there the model invokes RAG via the search_wikipedia tool instead of the
+    pre-stream auto-injection.
+
+    Also returns the loaded `Project` (if any) so callers don't need to
+    re-query — the agent endpoint reuses it for tool execution.
     """
     async with AsyncSessionLocal() as session:
         chat = (
@@ -524,7 +483,7 @@ async def _prepare_stream(
             )
         ).scalar_one_or_none()
         if not chat:
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         cascade = await _load_cascade(session, chat)
         attached_files = await _resolve_attached_files(session, chat, file_ids)
@@ -549,16 +508,19 @@ async def _prepare_stream(
                 )
             ).scalar_one_or_none()
 
-        rag_prompt_payload, rag_citations_meta = await _maybe_retrieve_rag(
-            project, user_message
-        )
-        if rag_citations_meta is not None:
-            logger.info(
-                "RAG retrieved %d hits (used_dense=%s) for chat %s",
-                len(rag_citations_meta["hits"]),
-                rag_citations_meta["used_dense"],
-                chat_id,
+        if skip_rag:
+            rag_prompt_payload, rag_citations_meta = None, None
+        else:
+            rag_prompt_payload, rag_citations_meta = await _maybe_retrieve_rag(
+                project, user_message
             )
+            if rag_citations_meta is not None:
+                logger.info(
+                    "RAG retrieved %d hits (used_dense=%s) for chat %s",
+                    len(rag_citations_meta["hits"]),
+                    rag_citations_meta["used_dense"],
+                    chat_id,
+                )
 
         ollama_messages = await _build_ollama_messages(
             session,
@@ -580,7 +542,7 @@ async def _prepare_stream(
 
         model_name = chat.model
 
-    return chat, cascade, ollama_messages, model_name, rag_citations_meta
+    return chat, cascade, ollama_messages, model_name, rag_citations_meta, project
 
 
 async def _persist_assistant_message(
@@ -588,6 +550,7 @@ async def _persist_assistant_message(
     content: str,
     truncated: bool,
     rag_citations: Optional[Dict] = None,
+    tool_calls: Optional[List[Dict]] = None,
 ) -> int:
     """
     Save the assistant message in its own transaction and return the post-save
@@ -600,6 +563,7 @@ async def _persist_assistant_message(
             content=content,
             truncated=truncated,
             rag_citations=rag_citations,
+            tool_calls=tool_calls,
         )
         session.add(assistant_message)
         await session.commit()
@@ -651,7 +615,7 @@ async def stream_chat_response(
         f"message: '{body.content[:50]}...'"
     )
 
-    chat, cascade, ollama_messages, model_name, rag_citations = await _prepare_stream(
+    chat, cascade, ollama_messages, model_name, rag_citations, _project = await _prepare_stream(
         chat_id, current_user.id, body.content, body.file_ids
     )
 
@@ -743,3 +707,129 @@ async def stream_chat_response(
 def _ndjson(payload: dict) -> bytes:
     """Encode one NDJSON line (single JSON object + newline)."""
     return (json.dumps(payload) + "\n").encode("utf-8")
+
+
+def _project_has_full_rag_config(project: Optional[Project]) -> bool:
+    return bool(
+        project
+        and project.rag_enabled
+        and project.rag_server_url
+        and project.rag_corpus_id
+        and project.rag_top_k
+    )
+
+
+@router.post("/{chat_id}/agent")
+async def stream_agent_response(
+    chat_id: UUID,
+    body: StreamMessageRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Agentic variant of /stream. The model is given a `search_wikipedia` tool
+    and decides when (and with what query) to invoke it. Same NDJSON
+    transport as /stream, plus two new frame types:
+
+    - `{"type": "tool_call", "id": "...", "name": "...", "input": {...}}`
+    - `{"type": "tool_result", "id": "...", "ok": bool, "summary"|"error": "..."}`
+
+    Pre-stream auto-RAG is skipped here — the model invokes RAG via the tool.
+
+    Requires the chat's project to have RAG fully configured.
+    """
+    request_id = str(uuid_lib.uuid4())[:8]
+    logger.info(
+        f"[Req {request_id}] Agent endpoint called for chat {chat_id}, "
+        f"message: '{body.content[:50]}...'"
+    )
+
+    chat, cascade, ollama_messages, model_name, _rag_citations, project = (
+        await _prepare_stream(
+            chat_id, current_user.id, body.content, body.file_ids, skip_rag=True
+        )
+    )
+
+    # Validate the agent mode preconditions BEFORE streaming so the FE gets a
+    # clean HTTP 400 rather than an error frame mid-stream.
+    if chat is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chat {chat_id} not found",
+        )
+    if not _project_has_full_rag_config(project):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Agent mode requires the chat's project to have RAG fully "
+                "configured (rag_enabled with server URL, corpus, and top_k)."
+            ),
+        )
+    # mypy/readability: the helper above guarantees these are non-None
+    assert cascade is not None
+    assert ollama_messages is not None
+    assert model_name is not None
+    assert project is not None
+
+    options = {
+        "temperature": cascade.temperature,
+        "num_predict": cascade.max_tokens,
+        "num_ctx": cascade.num_ctx,
+    }
+
+    async def event_generator() -> AsyncGenerator[bytes, None]:
+        result = AgentRunResult()
+        try:
+            async for frame in run_agent(
+                model=model_name,
+                initial_messages=ollama_messages,
+                options=options,
+                project=project,
+                result=result,
+                is_disconnected=request.is_disconnected,
+            ):
+                yield _ndjson(frame)
+        except Exception as e:
+            logger.error(f"[Req {request_id}] Agent loop crashed: {e}")
+            result.error = result.error or f"Agent loop crashed: {e}"
+            yield _ndjson({"type": "error", "message": result.error})
+
+        # Persist whatever the agent produced. We persist even when the loop
+        # errored as long as there's content — matches the /stream contract
+        # where a partial truncated message is preserved.
+        is_truncated = result.truncated or result.error is not None
+        assistant_count = 0
+        try:
+            if result.final_content or result.tool_calls_audit:
+                assistant_count = await _persist_assistant_message(
+                    chat_id=chat_id,
+                    content=result.final_content,
+                    truncated=is_truncated,
+                    rag_citations=result.rag_citations,
+                    tool_calls=result.tool_calls_audit or None,
+                )
+                logger.info(
+                    f"[Req {request_id}] Persisted agent assistant message "
+                    f"(truncated={is_truncated}, tool_calls={len(result.tool_calls_audit)})"
+                )
+        except Exception as e:
+            logger.error(
+                f"[Req {request_id}] Failed to persist agent assistant message: {e}"
+            )
+
+        # Trigger title generation on the first successful assistant turn,
+        # same rule as /stream.
+        if assistant_count == 1 and not is_truncated:
+            asyncio.create_task(
+                generate_and_update_title(chat_id, cascade.title_model)
+            )
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

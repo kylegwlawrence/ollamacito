@@ -5,6 +5,15 @@ export interface AttachedFileInfo {
   file_size: number
 }
 
+export interface ToolCall {
+  id: string
+  name: string
+  input: Record<string, unknown>
+  ok: boolean
+  summary?: string
+  error?: string
+}
+
 export interface Message {
   id: string
   chat_id: string
@@ -13,6 +22,7 @@ export interface Message {
   tokens_used?: number
   attached_files?: AttachedFileInfo[]
   rag_citations?: RagCitations | null
+  tool_calls?: ToolCall[] | null
   created_at: string
 }
 

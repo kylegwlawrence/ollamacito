@@ -61,6 +61,7 @@ describe('useStreaming', () => {
       activeChatId: null,
       isStreaming: false,
       streamingContent: '',
+      streamingToolCalls: [],
       error: null,
     })
     useChatStore.setState({ currentChat: null, messages: [], selectedFileIds: [] })
@@ -158,6 +159,116 @@ describe('useStreaming', () => {
     await act(async () => {
       await first!
     })
+  })
+
+  it('routes to the agent endpoint when agentMode=true', async () => {
+    mockFetchOnce(
+      streamFromFrames([
+        { type: 'chunk', content: 'ok' },
+        { type: 'done', truncated: false },
+      ])
+    )
+
+    const { result } = renderHook(() => useStreaming())
+
+    await act(async () => {
+      await result.current.sendMessage('chat-1', 'hi', [], true)
+    })
+
+    const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
+    expect(calls.length).toBe(1)
+    const url = calls[0][0] as string
+    expect(url).toContain('/chats/chat-1/agent')
+    expect(url).not.toContain('/stream')
+  })
+
+  it('routes to the stream endpoint when agentMode is omitted', async () => {
+    mockFetchOnce(
+      streamFromFrames([
+        { type: 'chunk', content: 'ok' },
+        { type: 'done', truncated: false },
+      ])
+    )
+
+    const { result } = renderHook(() => useStreaming())
+
+    await act(async () => {
+      await result.current.sendMessage('chat-1', 'hi')
+    })
+
+    const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
+    expect(calls.length).toBe(1)
+    const url = calls[0][0] as string
+    expect(url).toContain('/chats/chat-1/stream')
+    expect(url).not.toContain('/agent')
+  })
+
+  it('accumulates tool_call and tool_result frames into streamingToolCalls', async () => {
+    let close: (() => void) | undefined
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        // Emit a tool_call first so we can observe the pending state.
+        controller.enqueue(
+          enc.encode(
+            JSON.stringify({
+              type: 'tool_call',
+              id: 'tc-1',
+              name: 'search_wikipedia',
+              input: { query: 'frogs' },
+            }) + '\n'
+          )
+        )
+        close = () => {
+          controller.enqueue(
+            enc.encode(
+              JSON.stringify({
+                type: 'tool_result',
+                id: 'tc-1',
+                ok: true,
+                summary: '3 results',
+              }) + '\n'
+            )
+          )
+          controller.enqueue(
+            enc.encode(
+              JSON.stringify({ type: 'chunk', content: 'frogs are amphibians' }) + '\n'
+            )
+          )
+          controller.enqueue(
+            enc.encode(
+              JSON.stringify({ type: 'done', truncated: false }) + '\n'
+            )
+          )
+          controller.close()
+        }
+      },
+    })
+    mockFetchOnce(body)
+
+    const { result } = renderHook(() => useStreaming())
+
+    let pending: Promise<void>
+    act(() => {
+      pending = result.current.sendMessage('chat-1', 'tell me about frogs', [], true)
+    })
+
+    // The first frame (tool_call) should land while still streaming.
+    await waitFor(() =>
+      expect(result.current.streamingToolCalls.length).toBe(1)
+    )
+    expect(result.current.streamingToolCalls[0].name).toBe('search_wikipedia')
+    expect(result.current.streamingToolCalls[0].ok).toBe(false) // pending
+
+    // Drain: result + chunk + done.
+    close!()
+    await act(async () => {
+      await pending!
+    })
+
+    // After completion the streaming bubble (and its tool calls) are cleared.
+    expect(result.current.streamingToolCalls).toEqual([])
+    expect(result.current.isStreaming).toBe(false)
+    expect(result.current.error).toBeNull()
   })
 
   it('exposes activeChatId so consumers can scope the bubble to one chat', async () => {

@@ -2,6 +2,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { formatDate } from '@/utils/formatters'
 import type { Message as MessageType, RagCitations } from '@/types'
+import { ToolCalls } from './ToolCalls'
 import './Message.css'
 
 interface MessageProps {
@@ -93,6 +94,9 @@ export const Message = ({ message }: MessageProps) => {
         <div className="message__text">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         </div>
+        {message.tool_calls && message.tool_calls.length > 0 && (
+          <ToolCalls calls={message.tool_calls} />
+        )}
         {message.rag_citations && <Sources citations={message.rag_citations} />}
         <div className="message__meta">
           <span className="message__time">{formatDate(message.created_at)}</span>

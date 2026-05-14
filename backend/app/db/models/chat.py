@@ -45,6 +45,11 @@ class Chat(Base, TimestampMixin):
         nullable=True,
     )
 
+    # Agent mode: when true, /chats/{id}/agent is used instead of /stream and the
+    # model is given tools (search_wikipedia for v1) it can invoke autonomously.
+    # Requires the chat's project to have rag_enabled + full RAG config.
+    agent_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="chats")
     messages: Mapped[List["Message"]] = relationship(
@@ -93,6 +98,14 @@ class Message(Base, TimestampMixin):
     # server_base_url + article_url_template are denormalized onto the message so
     # citation links keep resolving even if the project's RAG config changes later.
     rag_citations: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+    # Tool-call audit trail for agent-mode assistant messages.
+    # Shape: list[{id, name, input, ok, summary?, error?}] — one entry per
+    # tool invocation in the order the model issued them. None on non-agent
+    # turns. Detailed RAG hits still live in rag_citations (aggregated across
+    # all search_wikipedia calls); this column is for showing WHAT the agent
+    # did, not the retrieval payloads themselves.
+    tool_calls: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")

@@ -12,22 +12,35 @@
  *
  * Single-stream guarantee is preserved: a second `startStream` while one
  * is in flight is rejected with `error` set.
+ *
+ * Agent mode: the same store handles agentic streams (which add `tool_call`
+ * and `tool_result` frame types). When agentMode=true, `streamAgent` is
+ * used in place of `streamChat`. In-flight tool calls accumulate in
+ * `streamingToolCalls` for the UI to render between the user message and
+ * the streaming answer bubble.
  */
 import { create } from 'zustand'
-import { streamChat, type StreamFrame } from '@/services/streamApi'
+import {
+  streamChat,
+  streamAgent,
+  type StreamFrame,
+} from '@/services/streamApi'
 import { chatApi } from '@/services/chatApi'
+import type { ToolCall } from '@/types/message'
 import { useChatStore } from './chatStore'
 
 interface StreamingStore {
   activeChatId: string | null
   isStreaming: boolean
   streamingContent: string
+  streamingToolCalls: ToolCall[]
   error: string | null
 
   startStream: (
     chatId: string,
     message: string,
-    fileIds: string[] | null
+    fileIds: string[] | null,
+    agentMode?: boolean
   ) => Promise<void>
   cancelStream: () => void
   clearError: () => void
@@ -42,6 +55,7 @@ export const useStreamingStore = create<StreamingStore>((set) => ({
   activeChatId: null,
   isStreaming: false,
   streamingContent: '',
+  streamingToolCalls: [],
   error: null,
 
   clearError: () => set({ error: null }),
@@ -49,10 +63,15 @@ export const useStreamingStore = create<StreamingStore>((set) => ({
   cancelStream: () => {
     controller?.abort()
     controller = null
-    set({ isStreaming: false, activeChatId: null, streamingContent: '' })
+    set({
+      isStreaming: false,
+      activeChatId: null,
+      streamingContent: '',
+      streamingToolCalls: [],
+    })
   },
 
-  startStream: async (chatId, message, fileIds) => {
+  startStream: async (chatId, message, fileIds, agentMode = false) => {
     if (controller) {
       set({ error: 'A message is already streaming.' })
       return
@@ -65,14 +84,18 @@ export const useStreamingStore = create<StreamingStore>((set) => ({
       activeChatId: chatId,
       isStreaming: true,
       streamingContent: '',
+      streamingToolCalls: [],
       error: null,
     })
 
     let accumulated = ''
+    const toolCalls: ToolCall[] = []
     let terminalError: string | null = null
 
+    const streamFn = agentMode ? streamAgent : streamChat
+
     try {
-      for await (const frame of streamChat(
+      for await (const frame of streamFn(
         chatId,
         { content: message, file_ids: fileIds },
         ctrl
@@ -85,6 +108,25 @@ export const useStreamingStore = create<StreamingStore>((set) => ({
         } else if (frame.type === 'error') {
           terminalError = frame.message
           break
+        } else if (frame.type === 'tool_call') {
+          toolCalls.push({
+            id: frame.id,
+            name: frame.name,
+            input: frame.input,
+            ok: false, // pending until the matching tool_result lands
+          })
+          set({ streamingToolCalls: [...toolCalls] })
+        } else if (frame.type === 'tool_result') {
+          const idx = toolCalls.findIndex((tc) => tc.id === frame.id)
+          if (idx !== -1) {
+            toolCalls[idx] = {
+              ...toolCalls[idx],
+              ok: frame.ok,
+              summary: frame.summary,
+              error: frame.error,
+            }
+            set({ streamingToolCalls: [...toolCalls] })
+          }
         }
       }
     } catch (err) {
@@ -103,6 +145,7 @@ export const useStreamingStore = create<StreamingStore>((set) => ({
         isStreaming: false,
         activeChatId: null,
         streamingContent: '',
+        streamingToolCalls: [],
         error: terminalError,
       })
       return
@@ -126,6 +169,11 @@ export const useStreamingStore = create<StreamingStore>((set) => ({
       /* ignore — next mount will refetch */
     }
 
-    set({ isStreaming: false, activeChatId: null, streamingContent: '' })
+    set({
+      isStreaming: false,
+      activeChatId: null,
+      streamingContent: '',
+      streamingToolCalls: [],
+    })
   },
 }))

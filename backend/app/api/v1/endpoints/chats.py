@@ -65,6 +65,7 @@ async def list_chats(
                 model=chat.model,
                 is_archived=chat.is_archived,
                 project_id=chat.project_id,
+                agent_mode_enabled=chat.agent_mode_enabled,
                 created_at=chat.created_at,
                 updated_at=chat.updated_at,
                 message_count=len(chat.messages),
@@ -106,6 +107,7 @@ async def get_chat(
         model=chat_with_messages.model,
         is_archived=chat_with_messages.is_archived,
         project_id=chat_with_messages.project_id,
+        agent_mode_enabled=chat_with_messages.agent_mode_enabled,
         created_at=chat_with_messages.created_at,
         updated_at=chat_with_messages.updated_at,
         message_count=len(sorted_messages),
@@ -143,6 +145,7 @@ async def create_chat(
             title=chat_data.title,
             model=chat_data.model,
             project_id=chat_data.project_id,
+            agent_mode_enabled=chat_data.agent_mode_enabled,
         )
         db.add(new_chat)
         await db.flush()
@@ -156,6 +159,7 @@ async def create_chat(
             model=new_chat.model,
             is_archived=new_chat.is_archived,
             project_id=new_chat.project_id,
+            agent_mode_enabled=new_chat.agent_mode_enabled,
             created_at=new_chat.created_at,
             updated_at=new_chat.updated_at,
             message_count=0,
@@ -184,6 +188,8 @@ async def update_chat(
         chat.model = chat_data.model
     if chat_data.is_archived is not None:
         chat.is_archived = chat_data.is_archived
+    if chat_data.agent_mode_enabled is not None:
+        chat.agent_mode_enabled = chat_data.agent_mode_enabled
 
     await db.flush()
     await db.refresh(chat)
@@ -202,6 +208,7 @@ async def update_chat(
         model=chat.model,
         is_archived=chat.is_archived,
         project_id=chat.project_id,
+        agent_mode_enabled=chat.agent_mode_enabled,
         created_at=chat.created_at,
         updated_at=chat.updated_at,
         message_count=message_count,
@@ -244,6 +251,7 @@ async def archive_chat(
         model=chat.model,
         is_archived=chat.is_archived,
         project_id=chat.project_id,
+        agent_mode_enabled=chat.agent_mode_enabled,
         created_at=chat.created_at,
         updated_at=chat.updated_at,
         message_count=message_count,

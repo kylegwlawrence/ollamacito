@@ -1,14 +1,17 @@
 import { useCallback } from 'react'
 import { useStreamingStore } from '@/stores/streamingStore'
+import type { ToolCall } from '@/types/message'
 
 interface UseStreamingReturn {
   sendMessage: (
     chatId: string,
     message: string,
-    fileIds?: string[]
+    fileIds?: string[],
+    agentMode?: boolean
   ) => Promise<void>
   isStreaming: boolean
   streamingContent: string
+  streamingToolCalls: ToolCall[]
   error: string | null
   cancelStream: () => void
   /** chatId whose stream is currently in-flight, or null. Lets callers
@@ -26,18 +29,26 @@ interface UseStreamingReturn {
  * Single-stream guarantee is preserved by the store (a second send while
  * one is in-flight is rejected with `error` set). Cancel is still wired
  * to the Stop button in `MessageInput`.
+ *
+ * `agentMode` selects the agentic endpoint (with search_wikipedia tool).
+ * In-flight tool invocations are exposed via `streamingToolCalls`.
  */
 export const useStreaming = (): UseStreamingReturn => {
   const isStreaming = useStreamingStore((s) => s.isStreaming)
   const streamingContent = useStreamingStore((s) => s.streamingContent)
+  const streamingToolCalls = useStreamingStore((s) => s.streamingToolCalls)
   const error = useStreamingStore((s) => s.error)
   const activeChatId = useStreamingStore((s) => s.activeChatId)
   const startStream = useStreamingStore((s) => s.startStream)
   const cancelStream = useStreamingStore((s) => s.cancelStream)
 
   const sendMessage = useCallback(
-    (chatId: string, message: string, fileIds?: string[]) =>
-      startStream(chatId, message, fileIds ?? null),
+    (
+      chatId: string,
+      message: string,
+      fileIds?: string[],
+      agentMode?: boolean
+    ) => startStream(chatId, message, fileIds ?? null, agentMode ?? false),
     [startStream]
   )
 
@@ -45,6 +56,7 @@ export const useStreaming = (): UseStreamingReturn => {
     sendMessage,
     isStreaming,
     streamingContent,
+    streamingToolCalls,
     error,
     cancelStream,
     activeChatId,

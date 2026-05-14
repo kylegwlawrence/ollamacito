@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { MessageList } from './MessageList'
 import { MessageInput } from './MessageInput'
@@ -6,7 +6,18 @@ import { useChatStore } from '@/stores/chatStore'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { useStreaming } from '@/hooks/useStreaming'
 import { chatApi } from '@/services/chatApi'
+import { getErrorMessage } from '@/utils/errorHandler'
+import type { Project } from '@/types/project'
 import './ChatContainer.css'
+
+const projectHasFullRagConfig = (project: Project | null | undefined): boolean =>
+  !!(
+    project &&
+    project.rag_enabled &&
+    project.rag_server_url &&
+    project.rag_corpus_id &&
+    project.rag_top_k
+  )
 
 export const ChatContainer = () => {
   const { chatId } = useParams<{ chatId?: string }>()
@@ -31,6 +42,9 @@ export const ChatContainer = () => {
   const streaming = useStreaming()
   const isStreamingThisChat =
     streaming.isStreaming && streaming.activeChatId === currentChat?.id
+
+  const [togglingAgent, setTogglingAgent] = useState(false)
+  const agentToggleAvailable = projectHasFullRagConfig(chatProject)
 
   const loadMessages = async (id: string) => {
     try {
@@ -90,7 +104,36 @@ export const ChatContainer = () => {
     }
     setMessages([...messages, userMessage])
 
-    streaming.sendMessage(currentChat.id, message, fileIds)
+    // Only route through the agent endpoint if both the toggle is on AND
+    // the project actually supports it. Otherwise fall back to /stream so
+    // the user never gets a confusing 400 if the toggle is stale.
+    const useAgent =
+      currentChat.agent_mode_enabled && agentToggleAvailable
+
+    streaming.sendMessage(currentChat.id, message, fileIds, useAgent)
+  }
+
+  const handleToggleAgent = async () => {
+    if (!currentChat || togglingAgent || !agentToggleAvailable) return
+    const next = !currentChat.agent_mode_enabled
+    setTogglingAgent(true)
+    // Optimistically update so the UI reflects the change immediately.
+    setCurrentChat({ ...currentChat, agent_mode_enabled: next })
+    try {
+      const updated = await chatApi.update(currentChat.id, {
+        agent_mode_enabled: next,
+      })
+      setCurrentChat({ ...currentChat, ...updated })
+    } catch (err) {
+      // Roll back on failure.
+      setCurrentChat({ ...currentChat, agent_mode_enabled: !next })
+      console.error(
+        'Failed to toggle agent mode:',
+        getErrorMessage(err, 'unknown error')
+      )
+    } finally {
+      setTogglingAgent(false)
+    }
   }
 
   if (!currentChat) {
@@ -103,6 +146,12 @@ export const ChatContainer = () => {
       </main>
     )
   }
+
+  const agentToggleTooltip = agentToggleAvailable
+    ? currentChat.agent_mode_enabled
+      ? 'Disable agent mode (model can call search_wikipedia)'
+      : 'Enable agent mode (let the model search Wikipedia on its own)'
+    : 'Agent mode requires the chat’s project to have RAG configured'
 
   return (
     <main className="chat-container" role="main" aria-label="Chat conversation">
@@ -123,19 +172,38 @@ export const ChatContainer = () => {
           )}
           <h2 className="chat-container__title">{currentChat.title}</h2>
         </div>
-        <span className="chat-container__model" aria-label={`Using model ${currentChat.model}`}>
-          {currentChat.model.split(':').map((part, index) => (
-          <span key={index}>
-            {part}
-            {index < currentChat.model.split(':').length - 1 && <br />}
+        <div className="chat-container__header-right">
+          <button
+            type="button"
+            className={`chat-container__agent-toggle ${
+              currentChat.agent_mode_enabled
+                ? 'chat-container__agent-toggle--on'
+                : ''
+            }`}
+            onClick={handleToggleAgent}
+            disabled={!agentToggleAvailable || togglingAgent}
+            title={agentToggleTooltip}
+            aria-pressed={currentChat.agent_mode_enabled}
+          >
+            {currentChat.agent_mode_enabled ? 'Agent: on' : 'Agent: off'}
+          </button>
+          <span className="chat-container__model" aria-label={`Using model ${currentChat.model}`}>
+            {currentChat.model.split(':').map((part, index) => (
+            <span key={index}>
+              {part}
+              {index < currentChat.model.split(':').length - 1 && <br />}
+            </span>
+            ))}
           </span>
-          ))}
-        </span>
+        </div>
       </header>
       <MessageList
         messages={messages}
         isStreaming={isStreamingThisChat}
         streamingContent={isStreamingThisChat ? streaming.streamingContent : ''}
+        streamingToolCalls={
+          isStreamingThisChat ? streaming.streamingToolCalls : []
+        }
       />
       <MessageInput
         onSend={handleSend}

@@ -1,0 +1,89 @@
+.message__tool-calls {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border-color);
+}
+
+.message__tool-calls-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 0.375rem 0;
+  font-size: 0.75rem;
+  opacity: 0.75;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  color: inherit;
+}
+
+.message__tool-calls-header:hover {
+  opacity: 1;
+}
+
+.message__tool-calls-title {
+  font-weight: 600;
+}
+
+.message__tool-calls-chevron {
+  display: inline-block;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.message__tool-calls-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.message__tool-call {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  background: rgba(125, 125, 125, 0.08);
+  flex-wrap: wrap;
+}
+
+.message__tool-call-name {
+  font-weight: 600;
+}
+
+.message__tool-call-arg {
+  opacity: 0.85;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.78rem;
+}
+
+.message__tool-call-status {
+  margin-left: auto;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  opacity: 0.9;
+}
+
+.message__tool-call--ok .message__tool-call-status {
+  background: rgba(40, 180, 80, 0.18);
+  border: 1px solid rgba(40, 180, 80, 0.4);
+}
+
+.message__tool-call--err .message__tool-call-status {
+  background: rgba(220, 60, 60, 0.18);
+  border: 1px solid rgba(220, 60, 60, 0.4);
+}
+
+.message__tool-call--pending .message__tool-call-status {
+  background: rgba(125, 125, 125, 0.18);
+  border: 1px solid rgba(125, 125, 125, 0.4);
+}

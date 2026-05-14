@@ -1,14 +1,16 @@
 /**
- * Streaming chat client (PLAN_NEW.md Phase 4).
+ * Streaming chat client (PLAN_NEW.md Phase 4) + agentic variant.
  *
- * Replaces the previous EventSource + GET ?message=... setup with a
- * POST + fetch ReadableStream that consumes NDJSON. NDJSON framing means
- * one JSON object per `\n`-terminated line; the backend emits three
- * frame shapes:
+ * Two endpoints share the same NDJSON wire format:
+ *   POST /api/v1/chats/{id}/stream   — regular chat
+ *   POST /api/v1/chats/{id}/agent    — agentic chat with search_wikipedia tool
  *
- *   { type: "chunk", content: string }
- *   { type: "done",  truncated: boolean }
- *   { type: "error", message: string }
+ * NDJSON: one JSON object per `\n`-terminated line. Frame types:
+ *   { type: "chunk",       content: string }
+ *   { type: "done",        truncated: boolean }
+ *   { type: "error",       message: string }
+ *   { type: "tool_call",   id: string, name: string, input: object } // agent only
+ *   { type: "tool_result", id: string, ok: boolean, summary?: string, error?: string } // agent only
  */
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -16,7 +18,25 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 export type ChunkFrame = { type: 'chunk'; content: string }
 export type DoneFrame = { type: 'done'; truncated: boolean }
 export type ErrorFrame = { type: 'error'; message: string }
-export type StreamFrame = ChunkFrame | DoneFrame | ErrorFrame
+export type ToolCallFrame = {
+  type: 'tool_call'
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+export type ToolResultFrame = {
+  type: 'tool_result'
+  id: string
+  ok: boolean
+  summary?: string
+  error?: string
+}
+export type StreamFrame =
+  | ChunkFrame
+  | DoneFrame
+  | ErrorFrame
+  | ToolCallFrame
+  | ToolResultFrame
 
 export interface StreamMessageRequest {
   content: string
@@ -24,18 +44,15 @@ export interface StreamMessageRequest {
 }
 
 /**
- * Open a stream for `POST /api/v1/chats/{chatId}/stream` and yield each
- * NDJSON frame as it arrives. The returned generator can be cancelled by
- * aborting `controller`; abort propagates as a `DOMException` named
- * `AbortError`, which the caller is expected to swallow.
+ * Core NDJSON-parsing generator shared by `streamChat` and `streamAgent`.
+ * POSTs the body, reads `response.body` as a stream of UTF-8 bytes, and
+ * yields each parsed JSON frame as it arrives. Frame-type-agnostic.
  */
-export async function* streamChat(
-  chatId: string,
+async function* streamNdjson(
+  url: string,
   body: StreamMessageRequest,
   controller: AbortController
 ): AsyncGenerator<StreamFrame, void, void> {
-  const url = `${API_URL}/api/v1/chats/${chatId}/stream`
-
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -96,11 +113,41 @@ export async function* streamChat(
       }
     }
   } finally {
-    // Always release the reader so the underlying connection can be GC'd.
     try {
       reader.releaseLock()
     } catch {
       /* already released */
     }
   }
+}
+
+/**
+ * Open a stream for `POST /api/v1/chats/{chatId}/stream`.
+ */
+export function streamChat(
+  chatId: string,
+  body: StreamMessageRequest,
+  controller: AbortController
+): AsyncGenerator<StreamFrame, void, void> {
+  return streamNdjson(
+    `${API_URL}/api/v1/chats/${chatId}/stream`,
+    body,
+    controller
+  )
+}
+
+/**
+ * Open a stream for `POST /api/v1/chats/{chatId}/agent` — same NDJSON
+ * transport as streamChat, but the model has tool access.
+ */
+export function streamAgent(
+  chatId: string,
+  body: StreamMessageRequest,
+  controller: AbortController
+): AsyncGenerator<StreamFrame, void, void> {
+  return streamNdjson(
+    `${API_URL}/api/v1/chats/${chatId}/agent`,
+    body,
+    controller
+  )
 }

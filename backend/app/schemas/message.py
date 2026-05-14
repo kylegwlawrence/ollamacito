@@ -48,6 +48,13 @@ class MessageResponse(MessageBase):
             "Shape: {used_dense, corpus, server_base_url, article_url_template, hits: [{title, section, score}]}"
         ),
     )
+    tool_calls: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description=(
+            "Tool-call audit trail for agent-mode assistant messages. "
+            "Shape: list[{id, name, input, ok, summary?, error?}] in invocation order."
+        ),
+    )
     created_at: datetime
 
     model_config = {"from_attributes": True}
