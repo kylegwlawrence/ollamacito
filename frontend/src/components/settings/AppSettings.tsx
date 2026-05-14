@@ -28,6 +28,15 @@ export const AppSettings = () => {
   const [saving, setSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
 
+  const parsedMaxTokens = maxTokens ? parseInt(maxTokens, 10) : NaN
+  const parsedNumCtx = numCtx ? parseInt(numCtx, 10) : NaN
+  const tokenBudgetError =
+    Number.isFinite(parsedMaxTokens) &&
+    Number.isFinite(parsedNumCtx) &&
+    parsedMaxTokens >= parsedNumCtx
+      ? 'Max Tokens must be less than the Context Window Size.'
+      : null
+
   useEffect(() => {
     if (settings) {
       setDefaultModel(settings.default_model || '')
@@ -51,6 +60,10 @@ export const AppSettings = () => {
 
   const handleSave = async () => {
     if (!settings) return
+    if (tokenBudgetError) {
+      showToast(tokenBudgetError, 'error')
+      return
+    }
 
     try {
       setSaving(true)
@@ -129,7 +142,12 @@ export const AppSettings = () => {
               <Button onClick={handleCancel} variant="secondary" size="sm" disabled={saving}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} variant="primary" size="sm" disabled={saving}>
+              <Button
+                onClick={handleSave}
+                variant="primary"
+                size="sm"
+                disabled={saving || tokenBudgetError !== null}
+              >
                 {saving ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
@@ -203,15 +221,24 @@ export const AppSettings = () => {
             <input
               id="max-tokens"
               type="number"
-              className="app-settings__input"
+              className={`app-settings__input${tokenBudgetError ? ' app-settings__input--invalid' : ''}`}
               value={maxTokens}
               onChange={(e) => setMaxTokens(e.target.value)}
               min="1"
               step="1"
+              aria-invalid={tokenBudgetError !== null}
+              aria-describedby="max-tokens-hint max-tokens-error"
             />
-            <span className="app-settings__hint">
-              Maximum tokens for model output. Default: 2048
+            <span id="max-tokens-hint" className="app-settings__hint">
+              Maximum tokens the model can generate in one response (Ollama&apos;s{' '}
+              <code>num_predict</code>). Must be less than the context window size below,
+              since the window is shared by your prompt and the reply. Default: 2048
             </span>
+            {tokenBudgetError && (
+              <span id="max-tokens-error" className="app-settings__error" role="alert">
+                {tokenBudgetError}
+              </span>
+            )}
           </div>
 
           <div className="app-settings__field">
@@ -221,15 +248,17 @@ export const AppSettings = () => {
             <input
               id="num-ctx"
               type="number"
-              className="app-settings__input"
+              className={`app-settings__input${tokenBudgetError ? ' app-settings__input--invalid' : ''}`}
               value={numCtx}
               onChange={(e) => setNumCtx(e.target.value)}
               min="1"
               step="1"
+              aria-invalid={tokenBudgetError !== null}
             />
             <span className="app-settings__hint">
-              Context window size for the model (maximum tokens for input and output combined).
-              Default: 2048
+              Total tokens the model can hold at once — system prompt, conversation history,
+              attached files, RAG hits, your message, and the generated reply all share this
+              budget. Must be greater than Max Tokens. Default: 2048
             </span>
           </div>
         </div>
@@ -244,8 +273,8 @@ export const AppSettings = () => {
             <li><strong>Default Model:</strong> The AI model used for new chats and conversations</li>
             <li><strong>Conversation Summarization Model:</strong> A smaller, faster model for generating chat titles</li>
             <li><strong>Temperature:</strong> Controls output randomness and creativity</li>
-            <li><strong>Max Tokens:</strong> Limits the length of model responses</li>
-            <li><strong>Context Window Size:</strong> Total tokens available for conversation history and responses</li>
+            <li><strong>Max Tokens:</strong> Caps how many tokens the model can generate in a single response</li>
+            <li><strong>Context Window Size:</strong> Total budget shared by the prompt (history, files, RAG) and the response — must be larger than Max Tokens</li>
           </ul>
           <p className="app-settings__section-description">
             Projects can override these defaults with their own settings.

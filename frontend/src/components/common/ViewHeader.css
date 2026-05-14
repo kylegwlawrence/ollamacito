@@ -13,11 +13,18 @@
   z-index: 10;
 }
 
+.view-header__leading {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .view-header__left {
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
   min-width: 0;
+  flex: 1;
 }
 
 .view-header__breadcrumb {

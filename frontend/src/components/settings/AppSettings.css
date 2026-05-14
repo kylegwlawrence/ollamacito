@@ -106,6 +106,20 @@
   color: var(--on-surf-2);
 }
 
+.app-settings__error {
+  font-size: var(--fs-caption);
+  color: var(--danger);
+}
+
+.app-settings__input--invalid {
+  border-color: var(--danger);
+}
+
+.app-settings__input--invalid:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger-tint);
+}
+
 .app-settings__info-list {
   margin: 0;
   padding-left: var(--s-6);

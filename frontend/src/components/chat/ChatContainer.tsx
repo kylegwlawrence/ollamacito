@@ -173,15 +173,15 @@ export const ChatContainer = () => {
   return (
     <main className="chat-container" role="main" aria-label="Chat conversation">
       <ViewHeader
-        breadcrumb={
+        leading={
           currentChat.project_id ? (
             <button
               className="chat-container__back-btn"
               onClick={() => navigate(`/projects/${currentChat.project_id}`)}
-              aria-label="Back to project"
+              aria-label={`Back to ${chatProject?.name ?? 'project'}`}
+              title={`Back to ${chatProject?.name ?? 'project'}`}
             >
-              <Icon name="arrow_back" size={16} />
-              {chatProject?.name ?? 'Project'}
+              <Icon name="arrow_back" size={24} />
             </button>
           ) : undefined
         }
