@@ -100,6 +100,9 @@ class FakeOllama:
         self.stream_delay: float = 0.0
         self.stream_calls: List[Dict[str, Any]] = []
         self.title_calls: List[Dict[str, Any]] = []
+        self.memory: str = "- mock memory bullet"
+        self.memory_error: Optional[Exception] = None
+        self.memory_calls: List[Dict[str, Any]] = []
 
     async def stream_chat(self, **kwargs: Any) -> AsyncGenerator[str, None]:
         self.stream_calls.append(kwargs)
@@ -129,6 +132,16 @@ class FakeOllama:
             raise self.title_error
         return self.title
 
+    async def generate_project_memory(
+        self,
+        transcript: str,
+        model: Optional[str] = None,
+    ) -> str:
+        self.memory_calls.append({"transcript": transcript, "model": model})
+        if self.memory_error is not None:
+            raise self.memory_error
+        return self.memory
+
 
 @pytest.fixture
 def fake_ollama(monkeypatch: pytest.MonkeyPatch) -> FakeOllama:
@@ -137,6 +150,7 @@ def fake_ollama(monkeypatch: pytest.MonkeyPatch) -> FakeOllama:
     real = ollama_module.ollama_service
     monkeypatch.setattr(real, "stream_chat", fake.stream_chat)
     monkeypatch.setattr(real, "generate_chat_title", fake.generate_chat_title)
+    monkeypatch.setattr(real, "generate_project_memory", fake.generate_project_memory)
     return fake
 
 
