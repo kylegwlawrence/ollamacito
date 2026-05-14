@@ -459,23 +459,23 @@ export const ProjectDetail = () => {
             </span>
           </div>
         }
-        actions={
-          <div className="project-detail__header-actions">
-            <Select
-              value={selectedModel}
-              onChange={setSelectedModel}
-              options={modelOptions}
-              aria-label="Select model for new chats"
-            />
-          </div>
-        }
       />
 
       <div className="project-detail__body">
         {/* Chats section */}
         <div className="card project-detail__section">
           <div className="project-detail__section-header">
-            <h2>Chats</h2>
+            <div className="project-detail__chats-heading">
+              <h2>Chats</h2>
+              <div className="project-detail__chats-model-select">
+                <Select
+                  value={selectedModel}
+                  onChange={setSelectedModel}
+                  options={modelOptions}
+                  aria-label="Select model for new chats"
+                />
+              </div>
+            </div>
           </div>
           <div className="project-detail__chats-new-btn">
             <Button variant="primary" size="sm" leadingIcon="add" onClick={handleNewChat}>

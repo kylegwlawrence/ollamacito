@@ -130,6 +130,17 @@
   margin: 0;
 }
 
+/* Chats heading with inline model selector */
+.project-detail__chats-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.project-detail__chats-model-select {
+  width: 50ch;
+}
+
 /* Chats */
 .project-detail__chats {
   display: flex;
