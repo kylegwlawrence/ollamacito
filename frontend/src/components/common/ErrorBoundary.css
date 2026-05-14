@@ -5,7 +5,7 @@
   min-height: 400px;
   width: 100%;
   padding: 2rem;
-  background: var(--bg-primary);
+  background: var(--surf-0);
 }
 
 .error-boundary__content {
@@ -19,7 +19,7 @@
 
 .error-boundary__icon {
   font-size: 4rem;
-  color: var(--error-color, #ef4444);
+  color: var(--danger);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -35,13 +35,13 @@
 .error-boundary__title {
   font-size: 1.75rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--on-surf-0);
   margin: 0;
 }
 
 .error-boundary__message {
   font-size: 1rem;
-  color: var(--text-secondary);
+  color: var(--on-surf-1);
   line-height: 1.6;
   margin: 0;
 }
@@ -50,31 +50,31 @@
   width: 100%;
   margin-top: 1rem;
   padding: 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  background: var(--surf-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
   text-align: left;
 }
 
 .error-boundary__details summary {
   cursor: pointer;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--on-surf-0);
   margin-bottom: 1rem;
   user-select: none;
 }
 
 .error-boundary__details summary:hover {
-  color: var(--accent-color);
+  color: var(--brand);
 }
 
 .error-boundary__stack,
 .error-boundary__component-stack {
   font-size: 0.75rem;
-  color: var(--text-tertiary);
-  background: var(--bg-primary);
+  color: var(--on-surf-2);
+  background: var(--surf-0);
   padding: 1rem;
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-sm);
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;

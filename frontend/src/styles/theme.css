@@ -76,38 +76,6 @@
   --h-control: 36px;
   --h-control-lg: 44px;
 
-  /* Backward-compat aliases (remove after all component CSS migrated) */
-  --bg-primary: var(--surf-0);
-  --bg-secondary: var(--surf-1);
-  --bg-tertiary: var(--surf-2);
-  --bg-hover: var(--surf-3);
-  --text-primary: var(--on-surf-0);
-  --text-secondary: var(--on-surf-1);
-  --text-tertiary: var(--on-surf-2);
-  --text-inverse: var(--on-brand);
-  --border-color: var(--border-subtle);
-  --border-hover: var(--border-strong);
-  --accent-color: var(--brand);
-  --accent-hover: var(--brand-hover);
-  --accent-light: var(--brand-tint);
-  --success-color: var(--success);
-  --error-color: var(--danger);
-  --warning-color: var(--warning);
-  --user-message-bg: var(--brand);
-  --user-message-text: var(--on-brand);
-  --assistant-message-bg: var(--surf-1);
-  --assistant-message-text: var(--on-surf-0);
-  --message-code-bg: var(--surf-2);
-  --shadow-sm: var(--elev-1);
-  --shadow-md: var(--elev-2);
-  --shadow-lg: var(--elev-3);
-  --radius-sm: var(--r-xs);
-  --radius-md: var(--r-sm);
-  --radius-lg: var(--r-md);
-  --radius-xl: var(--r-lg);
-  --transition-fast: var(--dur-fast) var(--ease-std);
-  --transition-normal: var(--dur-base) var(--ease-std);
-  --transition-slow: var(--dur-slow) var(--ease-std);
 }
 
 /* Scrollbar */
