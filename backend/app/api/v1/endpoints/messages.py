@@ -165,6 +165,11 @@ async def _build_ollama_messages(
             await session.execute(select(Project).where(Project.id == chat.project_id))
         ).scalar_one_or_none()
 
+    if project and project.memory:
+        system_prompt_parts.append("Project Memory (key facts and decisions):")
+        system_prompt_parts.append(project.memory)
+        system_prompt_parts.append("")
+
     if project and project.custom_instructions:
         system_prompt_parts.append("Project Context:")
         system_prompt_parts.append(project.custom_instructions)
