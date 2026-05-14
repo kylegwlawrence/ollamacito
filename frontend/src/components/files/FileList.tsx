@@ -67,12 +67,7 @@ export const FileList = ({ projectId, files, onFileDeleted }: FileListProps) => 
   }
 
   if (files.length === 0) {
-    return (
-      <div className="file-list file-list--empty">
-        <p>No files uploaded yet</p>
-        <p className="file-list__hint">Upload .txt, .json, .csv, or .md files to reference in your chats</p>
-      </div>
-    )
+    return null
   }
 
   return (

@@ -503,6 +503,8 @@ export const ProjectDetail = () => {
         <div className="card project-detail__section">
           <div className="project-detail__section-header">
             <h2>Files</h2>
+          </div>
+          <div className="project-detail__chats-new-btn">
             <FileUpload projectId={currentProjectId!} onUploadSuccess={loadProjectData} />
           </div>
           <FileList
