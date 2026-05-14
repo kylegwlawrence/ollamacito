@@ -21,6 +21,7 @@ export const ProjectDetail = () => {
   const currentProject = useProjectsStore((s) => s.currentProject)
   const setCurrentProject = useProjectsStore((s) => s.setCurrentProject)
   const updateProject = useProjectsStore((s) => s.updateProject)
+  const adjustChatCount = useProjectsStore((s) => s.adjustChatCount)
   const setCurrentChat = useChatStore((s) => s.setCurrentChat)
   const { createChat, updateChat, deleteChat } = useChats()
   const settings = useSettingsStore((s) => s.settings)
@@ -128,6 +129,7 @@ export const ProjectDetail = () => {
 
       if (newChat) {
         setProjectChats((prev) => [newChat, ...prev])
+        adjustChatCount(currentProjectId, 1)
         setCurrentChat(newChat)
         navigate(`/chats/${newChat.id}`)
       } else {
@@ -170,6 +172,9 @@ export const ProjectDetail = () => {
     ) {
       await deleteChat(chatId)
       setProjectChats((prev) => prev.filter((chat) => chat.id !== chatId))
+      if (currentProjectId) {
+        adjustChatCount(currentProjectId, -1)
+      }
     }
   }
 

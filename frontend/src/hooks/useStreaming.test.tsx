@@ -1,13 +1,32 @@
 /**
- * Tests for the Phase 4 useStreaming hook (POST + fetch ReadableStream + NDJSON).
+ * Tests for the Phase 4 useStreaming hook + the streamingStore that backs
+ * it. The store owns the in-flight fetch so navigation doesn't abort it
+ * (see streamingStore.ts).
  *
  * We stub `globalThis.fetch` to return a Response whose body is a
  * ReadableStream of UTF-8 bytes; that exercises the actual NDJSON parsing
- * in streamApi.ts without needing MSW.
+ * in streamApi.ts without needing MSW. `chatApi.get` is mocked because
+ * the store refetches the chat on stream completion.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { useStreaming } from './useStreaming'
+import { useStreamingStore } from '@/stores/streamingStore'
+import { useChatStore } from '@/stores/chatStore'
+
+vi.mock('@/services/chatApi', () => ({
+  chatApi: {
+    get: vi.fn(async (id: string) => ({
+      id,
+      title: 'test',
+      model: 'm',
+      project_id: null,
+      created_at: '',
+      updated_at: '',
+      messages: [],
+    })),
+  },
+}))
 
 const enc = new TextEncoder()
 
@@ -37,9 +56,17 @@ function mockFetchOnce(body: ReadableStream<Uint8Array>, status = 200): void {
 describe('useStreaming', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
+    // Reset the singleton stores so tests don't leak state.
+    useStreamingStore.setState({
+      activeChatId: null,
+      isStreaming: false,
+      streamingContent: '',
+      error: null,
+    })
+    useChatStore.setState({ currentChat: null, messages: [], selectedFileIds: [] })
   })
 
-  it('accumulates chunk content and calls onComplete with the full response', async () => {
+  it('accumulates chunk content and ends with isStreaming=false', async () => {
     mockFetchOnce(
       streamFromFrames([
         { type: 'chunk', content: 'Hello ' },
@@ -48,20 +75,18 @@ describe('useStreaming', () => {
       ])
     )
 
-    const onComplete = vi.fn()
-    const { result } = renderHook(() => useStreaming(onComplete))
+    const { result } = renderHook(() => useStreaming())
 
     await act(async () => {
       await result.current.sendMessage('chat-1', 'hi')
     })
 
-    expect(onComplete).toHaveBeenCalledTimes(1)
-    expect(onComplete).toHaveBeenCalledWith('Hello world', false)
     expect(result.current.error).toBeNull()
     expect(result.current.isStreaming).toBe(false)
+    expect(result.current.streamingContent).toBe('')
   })
 
-  it('surfaces an error frame as an error and does NOT call onComplete', async () => {
+  it('surfaces an error frame as an error', async () => {
     mockFetchOnce(
       streamFromFrames([
         { type: 'chunk', content: 'partial' },
@@ -69,18 +94,17 @@ describe('useStreaming', () => {
       ])
     )
 
-    const onComplete = vi.fn()
-    const { result } = renderHook(() => useStreaming(onComplete))
+    const { result } = renderHook(() => useStreaming())
 
     await act(async () => {
       await result.current.sendMessage('chat-1', 'hi')
     })
 
     expect(result.current.error).toBe('boom')
-    expect(onComplete).not.toHaveBeenCalled()
+    expect(result.current.isStreaming).toBe(false)
   })
 
-  it('passes the truncated flag through onComplete', async () => {
+  it('handles truncated=true cleanly', async () => {
     mockFetchOnce(
       streamFromFrames([
         { type: 'chunk', content: 'half' },
@@ -88,14 +112,14 @@ describe('useStreaming', () => {
       ])
     )
 
-    const onComplete = vi.fn()
-    const { result } = renderHook(() => useStreaming(onComplete))
+    const { result } = renderHook(() => useStreaming())
 
     await act(async () => {
       await result.current.sendMessage('chat-1', 'hi')
     })
 
-    expect(onComplete).toHaveBeenCalledWith('half', true)
+    expect(result.current.error).toBeNull()
+    expect(result.current.isStreaming).toBe(false)
   })
 
   it('rejects a second sendMessage while one is already streaming', async () => {
@@ -134,5 +158,36 @@ describe('useStreaming', () => {
     await act(async () => {
       await first!
     })
+  })
+
+  it('exposes activeChatId so consumers can scope the bubble to one chat', async () => {
+    let close: (() => void) | undefined
+    const slowBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        close = () => {
+          controller.enqueue(
+            enc.encode(JSON.stringify({ type: 'done', truncated: false }) + '\n')
+          )
+          controller.close()
+        }
+      },
+    })
+    mockFetchOnce(slowBody)
+
+    const { result } = renderHook(() => useStreaming())
+
+    let pending: Promise<void>
+    act(() => {
+      pending = result.current.sendMessage('chat-XYZ', 'hi')
+    })
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(true))
+    expect(result.current.activeChatId).toBe('chat-XYZ')
+
+    close!()
+    await act(async () => {
+      await pending!
+    })
+    expect(result.current.activeChatId).toBeNull()
   })
 })

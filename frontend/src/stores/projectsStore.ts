@@ -33,6 +33,7 @@ interface ProjectsStore {
     updates: ProjectUpdate
   ) => Promise<ProjectResponse | null>
   deleteProject: (id: string) => Promise<void>
+  adjustChatCount: (id: string, delta: number) => void
 }
 
 export const useProjectsStore = create<ProjectsStore>((set, get) => ({
@@ -82,6 +83,18 @@ export const useProjectsStore = create<ProjectsStore>((set, get) => ({
       set({ error: getErrorMessage(err, 'Failed to update project') })
       return null
     }
+  },
+
+  adjustChatCount: (id, delta) => {
+    set((s) => ({
+      projects: s.projects.map((p) =>
+        p.id === id ? { ...p, chat_count: Math.max(0, p.chat_count + delta) } : p
+      ),
+      currentProject:
+        s.currentProject?.id === id
+          ? { ...s.currentProject, chat_count: Math.max(0, s.currentProject.chat_count + delta) }
+          : s.currentProject,
+    }))
   },
 
   deleteProject: async (id) => {

@@ -21,12 +21,12 @@ export const ChatContainer = () => {
   const toggleFileId = useChatStore((s) => s.toggleFileId)
   const currentProject = useProjectsStore((s) => s.currentProject)
 
-  const streaming = useStreaming(() => {
-    // Reload messages after streaming completes
-    if (currentChat) {
-      loadMessages(currentChat.id)
-    }
-  })
+  // Streaming now lives in a global store (see streamingStore.ts), so it
+  // survives navigation: leaving the chat page mid-response no longer aborts
+  // the fetch, and coming back shows the in-flight content again.
+  const streaming = useStreaming()
+  const isStreamingThisChat =
+    streaming.isStreaming && streaming.activeChatId === currentChat?.id
 
   const loadMessages = async (id: string) => {
     try {
@@ -127,13 +127,13 @@ export const ChatContainer = () => {
       </header>
       <MessageList
         messages={messages}
-        isStreaming={streaming.isStreaming}
-        streamingContent={streaming.streamingContent}
+        isStreaming={isStreamingThisChat}
+        streamingContent={isStreamingThisChat ? streaming.streamingContent : ''}
       />
       <MessageInput
         onSend={handleSend}
         disabled={streaming.isStreaming}
-        isStreaming={streaming.isStreaming}
+        isStreaming={isStreamingThisChat}
         onStop={streaming.cancelStream}
         projectFiles={projectFiles}
         selectedFileIds={selectedFileIds}
