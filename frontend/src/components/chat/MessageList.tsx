@@ -15,7 +15,7 @@ export const MessageList = ({ messages, isStreaming, streamingContent }: Message
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent])
+  }, [messages, isStreaming, streamingContent])
 
   return (
     <div className="message-list">
@@ -28,6 +28,17 @@ export const MessageList = ({ messages, isStreaming, streamingContent }: Message
       {messages.map((message) => (
         <Message key={message.id} message={message} />
       ))}
+
+      {isStreaming && !streamingContent && (
+        <div className="message message--assistant">
+          <div className="message__content">
+            <div className="message__meta">
+              <LoadingSpinner size="sm" />
+              <span>Generating...</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isStreaming && streamingContent && (
         <div className="message message--assistant">
