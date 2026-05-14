@@ -221,3 +221,19 @@ def fake_rag(monkeypatch: pytest.MonkeyPatch) -> FakeRag:
     monkeypatch.setattr(real, "get_info", fake.get_info)
     monkeypatch.setattr(real, "retrieve", fake.retrieve)
     return fake
+
+
+async def create_rag_server(
+    async_client: httpx.AsyncClient,
+    *,
+    name: str,
+    url: str = "http://rag.local:8001",
+    corpus_id: str = "simplewiki",
+) -> Dict[str, Any]:
+    """Helper for tests: create a RAG server entry for the default user."""
+    r = await async_client.post(
+        "/api/v1/rag-servers",
+        json={"name": name, "url": url, "corpus_id": corpus_id},
+    )
+    assert r.status_code == 201, r.text
+    return r.json()

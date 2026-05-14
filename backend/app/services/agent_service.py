@@ -218,10 +218,16 @@ async def _execute_search_wikipedia(
 
     capped_top_k = min(_TOOL_TOP_K_CAP, project.rag_top_k or _TOOL_TOP_K_CAP)
 
+    server = project.rag_server
+    if server is None:
+        raise ValueError(
+            "Project has no RAG server configured (rag_server relationship is None)."
+        )
+
     raw = await rag_service.retrieve(
-        base_url=project.rag_server_url,
+        base_url=server.url,
         query=query.strip(),
-        corpus=project.rag_corpus_id,
+        corpus=server.corpus_id,
         top_k=capped_top_k,
     )
     raw_hits = raw.get("hits", []) or []
@@ -230,7 +236,7 @@ async def _execute_search_wikipedia(
 
     tool_text = format_rag_context(
         {
-            "corpus": project.rag_corpus_id,
+            "corpus": server.corpus_id,
             "hits": deduped,
         }
     )
@@ -301,8 +307,15 @@ async def run_agent(
     message. The agent prepends its own system prompt directive.
     """
     # Pre-flight: fetch /rag/info to get article_url_template for citations.
+    server = project.rag_server
+    if server is None:
+        msg = "Project has no RAG server configured."
+        logger.error(msg)
+        result.error = msg
+        yield {"type": "error", "message": msg}
+        return
     try:
-        info = await rag_service.get_info(project.rag_server_url)
+        info = await rag_service.get_info(server.url)
     except Exception as e:
         msg = f"RAG server unavailable: {e}"
         logger.error(msg)
@@ -324,8 +337,8 @@ async def run_agent(
 
     def _commit_citations() -> None:
         result.rag_citations = _build_citations(
-            server_base_url=project.rag_server_url,
-            corpus=project.rag_corpus_id,
+            server_base_url=server.url,
+            corpus=server.corpus_id,
             article_url_template=article_url_template,
             aggregated_hits=aggregated_hits,
             used_dense_any=used_dense_any,

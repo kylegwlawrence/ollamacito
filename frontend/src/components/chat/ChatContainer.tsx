@@ -18,8 +18,7 @@ const projectHasFullRagConfig = (project: Project | null | undefined): boolean =
   !!(
     project &&
     project.rag_enabled &&
-    project.rag_server_url &&
-    project.rag_corpus_id &&
+    project.rag_server_id &&
     project.rag_top_k
   )
 

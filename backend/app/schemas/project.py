@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class ProjectBase(BaseModel):
@@ -40,15 +40,9 @@ class ProjectBase(BaseModel):
         default=False,
         description="When true, the backend retrieves context from the configured RAG server on every user message.",
     )
-    rag_server_url: Optional[str] = Field(
+    rag_server_id: Optional[UUID] = Field(
         None,
-        max_length=512,
-        description="Base URL of the RAG server (e.g. http://127.0.0.1:8001).",
-    )
-    rag_corpus_id: Optional[str] = Field(
-        None,
-        max_length=100,
-        description="ID of the corpus to query (e.g. simplewiki).",
+        description="ID of a RagServer entry owned by the current user. Required when rag_enabled is true.",
     )
     rag_top_k: Optional[int] = Field(
         None,
@@ -60,13 +54,6 @@ class ProjectBase(BaseModel):
         None,
         description="User-curated project memory document. Injected as the first section of the system prompt on every turn in this project's chats.",
     )
-
-    @field_validator("rag_server_url")
-    @classmethod
-    def _strip_trailing_slash(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return None
-        return value.rstrip("/") or None
 
 
 class ProjectCreate(ProjectBase):
@@ -86,30 +73,11 @@ class ProjectUpdate(BaseModel):
     max_tokens: Optional[int] = Field(None, gt=0)
     auto_attach_all_files: Optional[bool] = None
     rag_enabled: Optional[bool] = None
-    rag_server_url: Optional[str] = Field(None, max_length=512)
-    rag_corpus_id: Optional[str] = Field(None, max_length=100)
+    rag_server_id: Optional[UUID] = None
     rag_top_k: Optional[int] = Field(None, ge=1, le=50)
     memory: Optional[str] = Field(
         None, description="Set to a string to update, or null to clear."
     )
-
-    @field_validator("rag_server_url")
-    @classmethod
-    def _strip_trailing_slash(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return None
-        return value.rstrip("/") or None
-
-
-class RagInfoRequest(BaseModel):
-    """Body for POST /projects/{id}/rag/info — used by the 'Test connection' button."""
-
-    rag_server_url: str = Field(..., min_length=1, max_length=512)
-
-    @field_validator("rag_server_url")
-    @classmethod
-    def _strip_trailing_slash(cls, value: str) -> str:
-        return value.rstrip("/")
 
 
 class ProjectFileResponse(BaseModel):

@@ -87,14 +87,26 @@ async def _make_rag_chat(
     Returns (project_id, chat_id). The chat is created with
     agent_mode_enabled set so the FE-side flag is in sync.
     """
+    from uuid import uuid4
+
+    from tests.conftest import create_rag_server
+
+    rag_server_id: Optional[str] = None
+    if rag_enabled:
+        server = await create_rag_server(
+            async_client,
+            name=f"agent-test-{uuid4().hex[:8]}",
+            url=rag_server_url,
+            corpus_id=rag_corpus_id,
+        )
+        rag_server_id = server["id"]
     project = (
         await async_client.post(
             "/api/v1/projects",
             json={
                 "name": "agent-test",
                 "rag_enabled": rag_enabled,
-                "rag_server_url": rag_server_url if rag_enabled else None,
-                "rag_corpus_id": rag_corpus_id if rag_enabled else None,
+                "rag_server_id": rag_server_id,
                 "rag_top_k": rag_top_k if rag_enabled else None,
             },
         )

@@ -8,7 +8,7 @@ import { useModels } from '@/hooks/useModels'
 import { useToastStore } from '@/stores/toastStore'
 import { useConfirmStore } from '@/stores/confirmStore'
 import { projectApi } from '@/services/projectApi'
-import { ragApi } from '@/services/ragApi'
+import { useRagServersStore } from '@/stores/ragServersStore'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ViewHeader } from '../common/ViewHeader'
@@ -17,7 +17,7 @@ import { Select } from '../common/Select'
 import { ChatItem } from '../sidebar/ChatItem'
 import { FileUpload } from '../files/FileUpload'
 import { FileList } from '../files/FileList'
-import type { Chat, RagInfo } from '@/types'
+import type { Chat } from '@/types'
 import './ProjectDetail.css'
 
 export const ProjectDetail = () => {
@@ -33,6 +33,7 @@ export const ProjectDetail = () => {
   const { models } = useModels()
   const showToast = useToastStore((s) => s.showToast)
   const confirm = useConfirmStore((s) => s.ask)
+  const ragServers = useRagServersStore((s) => s.servers)
   const [projectChats, setProjectChats] = useState<Chat[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -48,11 +49,8 @@ export const ProjectDetail = () => {
   const [editedMaxTokens, setEditedMaxTokens] = useState('')
   const [editedAutoAttachAllFiles, setEditedAutoAttachAllFiles] = useState(false)
   const [editedRagEnabled, setEditedRagEnabled] = useState(false)
-  const [editedRagServerUrl, setEditedRagServerUrl] = useState('')
-  const [editedRagCorpusId, setEditedRagCorpusId] = useState('')
+  const [editedRagServerId, setEditedRagServerId] = useState<string>('')
   const [editedRagTopK, setEditedRagTopK] = useState<string>('')
-  const [ragInfo, setRagInfo] = useState<RagInfo | null>(null)
-  const [ragTesting, setRagTesting] = useState(false)
   const [hasSettingsChanges, setHasSettingsChanges] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
 
@@ -90,10 +88,8 @@ export const ProjectDetail = () => {
       setEditedMaxTokens(currentProject.max_tokens?.toString() ?? settings.default_max_tokens.toString())
       setEditedAutoAttachAllFiles(currentProject.auto_attach_all_files)
       setEditedRagEnabled(!!currentProject.rag_enabled)
-      setEditedRagServerUrl(currentProject.rag_server_url || '')
-      setEditedRagCorpusId(currentProject.rag_corpus_id || '')
+      setEditedRagServerId(currentProject.rag_server_id || '')
       setEditedRagTopK(currentProject.rag_top_k?.toString() || '')
-      setRagInfo(null)
     }
   }, [currentProject])
 
@@ -114,8 +110,7 @@ export const ProjectDetail = () => {
       const tokensChanged = editedMaxTokens !== (currentProject.max_tokens?.toString() ?? settings.default_max_tokens.toString())
       const autoAttachChanged = editedAutoAttachAllFiles !== currentProject.auto_attach_all_files
       const ragEnabledChanged = editedRagEnabled !== !!currentProject.rag_enabled
-      const ragUrlChanged = editedRagServerUrl !== (currentProject.rag_server_url || '')
-      const ragCorpusChanged = editedRagCorpusId !== (currentProject.rag_corpus_id || '')
+      const ragServerChanged = editedRagServerId !== (currentProject.rag_server_id || '')
       const ragTopKChanged = editedRagTopK !== (currentProject.rag_top_k?.toString() || '')
       setHasSettingsChanges(
         nameChanged ||
@@ -125,8 +120,7 @@ export const ProjectDetail = () => {
           tokensChanged ||
           autoAttachChanged ||
           ragEnabledChanged ||
-          ragUrlChanged ||
-          ragCorpusChanged ||
+          ragServerChanged ||
           ragTopKChanged
       )
     }
@@ -138,8 +132,7 @@ export const ProjectDetail = () => {
     editedMaxTokens,
     editedAutoAttachAllFiles,
     editedRagEnabled,
-    editedRagServerUrl,
-    editedRagCorpusId,
+    editedRagServerId,
     editedRagTopK,
     currentProject,
   ])
@@ -228,36 +221,6 @@ export const ProjectDetail = () => {
     }
   }
 
-  const handleTestRagConnection = async () => {
-    if (!currentProjectId) return
-    const url = editedRagServerUrl.trim()
-    if (!url) {
-      showToast('Enter a RAG server URL first', 'warning')
-      return
-    }
-    try {
-      setRagTesting(true)
-      const info = await ragApi.testConnection(currentProjectId, url)
-      setRagInfo(info)
-      if (editedRagCorpusId && !info.corpora.some((c) => c.id === editedRagCorpusId)) {
-        setEditedRagCorpusId('')
-      }
-      if (!editedRagTopK) {
-        setEditedRagTopK(info.default_top_k.toString())
-      }
-      showToast(
-        `Connected to ${info.server_name} (embed: ${info.embedding_model})`,
-        'success'
-      )
-    } catch (err) {
-      console.error('RAG test connection failed:', err)
-      const message = err instanceof Error ? err.message : 'RAG connection failed'
-      showToast(message, 'error')
-    } finally {
-      setRagTesting(false)
-    }
-  }
-
   const handleSaveSettings = async () => {
     if (!currentProjectId || !currentProject) return
 
@@ -267,12 +230,8 @@ export const ProjectDetail = () => {
     }
 
     if (editedRagEnabled) {
-      if (!editedRagServerUrl.trim()) {
-        showToast('RAG server URL is required when RAG is enabled', 'warning')
-        return
-      }
-      if (!editedRagCorpusId.trim()) {
-        showToast('Select a corpus before enabling RAG', 'warning')
+      if (!editedRagServerId) {
+        showToast('Select a RAG server before enabling RAG', 'warning')
         return
       }
       const k = parseInt(editedRagTopK, 10)
@@ -293,8 +252,7 @@ export const ProjectDetail = () => {
         max_tokens: editedMaxTokens ? parseInt(editedMaxTokens, 10) : undefined,
         auto_attach_all_files: editedAutoAttachAllFiles,
         rag_enabled: editedRagEnabled,
-        rag_server_url: editedRagServerUrl.trim() || null,
-        rag_corpus_id: editedRagCorpusId.trim() || null,
+        rag_server_id: editedRagServerId || null,
         rag_top_k: editedRagTopK ? parseInt(editedRagTopK, 10) : null,
       })
 
@@ -323,8 +281,7 @@ export const ProjectDetail = () => {
       setEditedMaxTokens(currentProject.max_tokens?.toString() ?? settings.default_max_tokens.toString())
       setEditedAutoAttachAllFiles(currentProject.auto_attach_all_files)
       setEditedRagEnabled(!!currentProject.rag_enabled)
-      setEditedRagServerUrl(currentProject.rag_server_url || '')
-      setEditedRagCorpusId(currentProject.rag_corpus_id || '')
+      setEditedRagServerId(currentProject.rag_server_id || '')
       setEditedRagTopK(currentProject.rag_top_k?.toString() || '')
       setHasSettingsChanges(false)
     }
@@ -410,17 +367,23 @@ export const ProjectDetail = () => {
     )
   }
 
-  // RAG corpus dropdown: live-from-server when ragInfo is set, otherwise show
-  // the saved corpus as a single locked option so the stored config is legible
-  // until the user re-tests the connection.
-  const corpusOptions = ragInfo
-    ? ragInfo.corpora
-    : editedRagCorpusId
-      ? [{ id: editedRagCorpusId, display_name: editedRagCorpusId, article_count: 0 }]
-      : []
-  const corpusDropdownDisabled = !editedRagEnabled || (!ragInfo && !editedRagCorpusId)
-  const topKMax = ragInfo?.max_top_k ?? 50
-  const topKPlaceholder = ragInfo ? `default ${ragInfo.default_top_k}` : 'e.g. 5'
+  // RAG server dropdown: list every server the user has saved globally.
+  // The selected option may have been deleted out from under us — keep it in
+  // the list as a stub so the stored config remains legible.
+  const ragServerOptions = ragServers.map((s) => ({
+    value: s.id,
+    label: `${s.name} — ${s.corpus_id}`,
+  }))
+  if (
+    editedRagServerId &&
+    !ragServers.some((s) => s.id === editedRagServerId)
+  ) {
+    ragServerOptions.unshift({
+      value: editedRagServerId,
+      label: '(deleted server)',
+    })
+  }
+  const topKPlaceholder = 'e.g. 5'
 
   const modelOptions = models.map((m) => ({
     value: m.name,
@@ -436,11 +399,6 @@ export const ProjectDetail = () => {
     { value: '', label: `Use Global Default (${settings.default_model})` },
     ...models.map((m) => ({ value: m.name, label: m.name })),
   ]
-
-  const corpusSelectOptions = corpusOptions.map((c) => ({
-    value: c.id,
-    label: c.display_name + (c.article_count ? ` (${c.article_count.toLocaleString()})` : ''),
-  }))
 
   return (
     <div className="project-detail">
@@ -642,9 +600,16 @@ export const ProjectDetail = () => {
               <div className="project-detail__model-settings">
                 <h3 className="project-detail__subsection-title">RAG Server</h3>
                 <p className="project-detail__subsection-description">
-                  Connect this project to a retrieval-augmented generation server.
-                  When enabled, every user message is sent to the RAG server and
-                  the returned chunks are injected into the system prompt.
+                  Pick a RAG server you&apos;ve configured globally. When enabled,
+                  every user message is sent to that server and the returned
+                  chunks are injected into the system prompt.{' '}
+                  <button
+                    type="button"
+                    className="project-detail__inline-link"
+                    onClick={() => navigate('/rag-servers')}
+                  >
+                    Manage RAG servers
+                  </button>
                 </p>
 
                 <div className="project-detail__field">
@@ -665,53 +630,35 @@ export const ProjectDetail = () => {
                 </div>
 
                 <div className="project-detail__field">
-                  <label htmlFor="rag-server-url" className="project-detail__label">
-                    Server URL
-                  </label>
-                  <div className="project-detail__url-row">
-                    <input
-                      id="rag-server-url"
-                      type="text"
-                      className="project-detail__input"
-                      value={editedRagServerUrl}
-                      onChange={(e) => setEditedRagServerUrl(e.target.value)}
-                      placeholder="http://host.docker.internal:8001"
-                      maxLength={512}
-                      disabled={!editedRagEnabled}
-                    />
-                    <Button
-                      onClick={handleTestRagConnection}
-                      variant="secondary"
-                      size="sm"
-                      disabled={!editedRagEnabled || !editedRagServerUrl.trim() || ragTesting}
-                    >
-                      {ragTesting ? 'Testing…' : 'Test connection'}
-                    </Button>
-                  </div>
-                  <span className="project-detail__hint">
-                    Base URL of the RAG server. The backend runs in Docker, so use{' '}
-                    <code>http://host.docker.internal:8001</code> to reach a server
-                    on your host (not <code>127.0.0.1</code>).
-                  </span>
-                </div>
-
-                <div className="project-detail__field">
-                  <span className="project-detail__label">Corpus</span>
-                  <Select
-                    value={editedRagCorpusId}
-                    onChange={setEditedRagCorpusId}
-                    options={corpusSelectOptions}
-                    placeholder="Select a corpus…"
-                    disabled={corpusDropdownDisabled}
-                    aria-label="Select RAG corpus"
-                  />
-                  <span className="project-detail__hint">
-                    {ragInfo
-                      ? 'Pick the corpus to query for this project.'
-                      : editedRagCorpusId
-                        ? 'Saved corpus shown. Click Test connection to pick a different one.'
-                        : 'Test the connection to populate this list.'}
-                  </span>
+                  <span className="project-detail__label">RAG server</span>
+                  {ragServers.length === 0 ? (
+                    <span className="project-detail__hint">
+                      You haven&apos;t added any RAG servers yet.{' '}
+                      <button
+                        type="button"
+                        className="project-detail__inline-link"
+                        onClick={() => navigate('/rag-servers')}
+                      >
+                        Add one
+                      </button>{' '}
+                      to enable RAG for this project.
+                    </span>
+                  ) : (
+                    <>
+                      <Select
+                        value={editedRagServerId}
+                        onChange={setEditedRagServerId}
+                        options={ragServerOptions}
+                        placeholder="Select a RAG server…"
+                        disabled={!editedRagEnabled}
+                        aria-label="Select RAG server"
+                      />
+                      <span className="project-detail__hint">
+                        Each option pairs a server with one corpus. Add or edit
+                        entries on the RAG Servers page.
+                      </span>
+                    </>
+                  )}
                 </div>
 
                 <div className="project-detail__field">
@@ -726,12 +673,12 @@ export const ProjectDetail = () => {
                     onChange={(e) => setEditedRagTopK(e.target.value)}
                     placeholder={topKPlaceholder}
                     min="1"
-                    max={topKMax}
+                    max={50}
                     step="1"
                     disabled={!editedRagEnabled}
                   />
                   <span className="project-detail__hint">
-                    Number of chunks to retrieve per message (1–{topKMax}). Higher
+                    Number of chunks to retrieve per message (1–50). Higher
                     values give the model more context but slow responses.
                   </span>
                 </div>

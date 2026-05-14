@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_chat_or_404, get_current_user, get_db
 from app.core.config import settings
@@ -163,7 +164,11 @@ async def _build_ollama_messages(
 
     if chat.project_id and project is None:
         project = (
-            await session.execute(select(Project).where(Project.id == chat.project_id))
+            await session.execute(
+                select(Project)
+                .where(Project.id == chat.project_id)
+                .options(selectinload(Project.rag_server))
+            )
         ).scalar_one_or_none()
 
     if project and project.memory:
@@ -215,24 +220,25 @@ async def _maybe_retrieve_rag(
                      {used_dense, corpus, server_base_url, article_url_template,
                       hits: [{title, section, score}]}
 
-    Returns (None, None) when RAG isn't enabled. Raises HTTPException(400) when
-    enabled with incomplete config. Lets Rag* exceptions propagate (handled by
-    the exception handlers in main.py).
+    Returns (None, None) when RAG isn't enabled, when the project has no
+    rag_server linked (orphaned after server delete — logged as a warning,
+    chat continues), or when top_k is missing. The chat flow stays alive even
+    when RAG config is incomplete; only Rag* HTTP failures propagate.
     """
     if project is None or not project.rag_enabled:
         return None, None
 
-    if not (project.rag_server_url and project.rag_corpus_id and project.rag_top_k):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "RAG is enabled on this project but configuration is incomplete "
-                "(server URL, corpus, or top_k is missing). Open project settings to fix."
-            ),
+    server = project.rag_server
+    if server is None or not project.rag_top_k:
+        logger.warning(
+            "Project %s has rag_enabled but missing rag_server or rag_top_k; "
+            "skipping RAG retrieval for this turn.",
+            project.id,
         )
+        return None, None
 
-    base_url = project.rag_server_url
-    corpus = project.rag_corpus_id
+    base_url = server.url
+    corpus = server.corpus_id
     top_k = project.rag_top_k
 
     info, retrieve = await asyncio.gather(
@@ -509,7 +515,9 @@ async def _prepare_stream(
         if chat.project_id:
             project = (
                 await session.execute(
-                    select(Project).where(Project.id == chat.project_id)
+                    select(Project)
+                    .where(Project.id == chat.project_id)
+                    .options(selectinload(Project.rag_server))
                 )
             ).scalar_one_or_none()
 
@@ -719,8 +727,7 @@ def _project_has_full_rag_config(project: Optional[Project]) -> bool:
     return bool(
         project
         and project.rag_enabled
-        and project.rag_server_url
-        and project.rag_corpus_id
+        and project.rag_server is not None
         and project.rag_top_k
     )
 
@@ -768,7 +775,7 @@ async def stream_agent_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "Agent mode requires the chat's project to have RAG fully "
-                "configured (rag_enabled with server URL, corpus, and top_k)."
+                "configured (rag_enabled with a selected RAG server and top_k)."
             ),
         )
     # mypy/readability: the helper above guarantees these are non-None

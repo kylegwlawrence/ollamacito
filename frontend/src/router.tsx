@@ -14,6 +14,7 @@ import { ToastContainer } from './components/common/ToastContainer'
 import { Sidebar } from './components/sidebar/Sidebar'
 import { ChatContainer } from './components/chat/ChatContainer'
 import { ProjectDetail } from './components/projects/ProjectDetail'
+import { RagServersPage } from './components/rag-servers/RagServersPage'
 import { AppSettings } from './components/settings/AppSettings'
 
 /**
@@ -56,6 +57,7 @@ export const router = createBrowserRouter([
       { index: true, element: <ChatContainer /> },
       { path: 'chats/:chatId', element: <ChatContainer /> },
       { path: 'projects/:projectId', element: <ProjectDetail /> },
+      { path: 'rag-servers', element: <RagServersPage /> },
       { path: 'settings', element: <AppSettings /> },
     ],
   },

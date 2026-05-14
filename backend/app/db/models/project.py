@@ -21,6 +21,7 @@ from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.db.models.chat import Chat
+    from app.db.models.rag_server import RagServer
     from app.db.models.user import User
 
 
@@ -61,17 +62,24 @@ class Project(Base, TimestampMixin):
     memory: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # External RAG-server integration (per-project). See LOCAL_WIKIPEDIA_API.md.
-    # When rag_enabled is true, the backend calls /rag/retrieve on rag_server_url
-    # for every user message in this project's chats and injects the hits into
-    # the system prompt. The three config fields must all be non-null when
-    # rag_enabled is true; the request layer rejects half-configured projects.
+    # When rag_enabled is true, the backend resolves the project's rag_server FK
+    # to get (url, corpus_id) and calls /rag/retrieve for every user message in
+    # this project's chats. rag_server_id and rag_top_k must both be non-null
+    # when rag_enabled is true; the request layer rejects half-configured projects.
     rag_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    rag_server_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    rag_corpus_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    rag_server_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("rag_servers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     rag_top_k: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="projects")
+    rag_server: Mapped[Optional["RagServer"]] = relationship(
+        "RagServer", back_populates="projects"
+    )
     chats: Mapped[List["Chat"]] = relationship(
         "Chat",
         back_populates="project",

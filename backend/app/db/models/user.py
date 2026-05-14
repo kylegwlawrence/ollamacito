@@ -19,6 +19,7 @@ from app.db.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from app.db.models.chat import Chat
     from app.db.models.project import Project
+    from app.db.models.rag_server import RagServer
     from app.db.models.settings import Settings
 
 
@@ -67,6 +68,11 @@ class User(Base, TimestampMixin):
         back_populates="user",
         cascade="all, delete-orphan",
         uselist=False,
+    )
+    rag_servers: Mapped[List["RagServer"]] = relationship(
+        "RagServer",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:

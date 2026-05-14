@@ -13,8 +13,7 @@ export interface Project {
   auto_attach_all_files: boolean
   memory?: string | null
   rag_enabled: boolean
-  rag_server_url: string | null
-  rag_corpus_id: string | null
+  rag_server_id: string | null
   rag_top_k: number | null
   created_at: string
   updated_at: string
@@ -54,8 +53,7 @@ export interface ProjectCreate {
   temperature?: number
   max_tokens?: number
   rag_enabled?: boolean
-  rag_server_url?: string | null
-  rag_corpus_id?: string | null
+  rag_server_id?: string | null
   rag_top_k?: number | null
 }
 
@@ -69,8 +67,7 @@ export interface ProjectUpdate {
   auto_attach_all_files?: boolean
   memory?: string | null
   rag_enabled?: boolean
-  rag_server_url?: string | null
-  rag_corpus_id?: string | null
+  rag_server_id?: string | null
   rag_top_k?: number | null
 }
 

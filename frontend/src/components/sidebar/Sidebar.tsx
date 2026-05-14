@@ -249,8 +249,17 @@ export const Sidebar = () => {
         </section>
       </div>
 
-      {/* Footer: settings */}
+      {/* Footer: RAG servers + settings */}
       <div className="sidebar__footer">
+        <button
+          className="sidebar__settings-link"
+          onClick={() => navigate('/rag-servers')}
+          title="Manage RAG servers"
+          aria-label="Manage RAG servers"
+        >
+          <Icon name="database" size={18} />
+          <span>RAG Servers</span>
+        </button>
         <button
           className="sidebar__settings-link"
           onClick={() => navigate('/settings')}

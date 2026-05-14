@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import List
+from typing import List, Optional
 
 import httpx
 import pytest
@@ -225,14 +225,26 @@ async def _make_rag_chat(
     rag_server_url: str = "http://rag.local:8001",
 ) -> tuple[str, str]:
     """Create a project (optionally RAG-enabled) + a chat in it. Returns (project_id, chat_id)."""
+    from tests.conftest import create_rag_server
+
+    rag_server_id: Optional[str] = None
+    if rag_enabled:
+        from uuid import uuid4
+
+        server = await create_rag_server(
+            async_client,
+            name=f"rag-stream-{uuid4().hex[:8]}",
+            url=rag_server_url,
+            corpus_id=rag_corpus_id,
+        )
+        rag_server_id = server["id"]
     project = (
         await async_client.post(
             "/api/v1/projects",
             json={
                 "name": "rag-stream",
                 "rag_enabled": rag_enabled,
-                "rag_server_url": rag_server_url if rag_enabled else None,
-                "rag_corpus_id": rag_corpus_id if rag_enabled else None,
+                "rag_server_id": rag_server_id,
                 "rag_top_k": rag_top_k if rag_enabled else None,
             },
         )
@@ -392,30 +404,31 @@ async def test_rag_server_down_returns_503_and_skips_user_message(
 
 
 @pytest.mark.asyncio
-async def test_rag_enabled_with_incomplete_config_returns_400(
+async def test_rag_enabled_with_orphan_server_skips_retrieval_gracefully(
     async_client: httpx.AsyncClient, fake_ollama: FakeOllama, fake_rag: FakeRag
 ) -> None:
     """
-    RAG enabled but a required config field is missing → 400 before the LLM call.
-    Simulated by enabling RAG via PATCH but clearing the corpus afterwards via DB.
+    If the project's rag_server FK has been NULLed (server was deleted), the
+    chat continues without RAG rather than 400-ing. The user can rewire the
+    project from settings; meanwhile their messages still go through.
     """
+    fake_ollama.chunks = ["ok"]
     project_id, chat_id = await _make_rag_chat(async_client)
     try:
-        # Clear required field directly to bypass schema validation
+        # Simulate the FK being NULLed by ON DELETE SET NULL.
         async with AsyncSessionLocal() as session:
             project = (
                 await session.execute(select(Project).where(Project.id == project_id))
             ).scalar_one()
-            project.rag_corpus_id = None
+            project.rag_server_id = None
             await session.commit()
 
-        r = await async_client.post(
-            f"/api/v1/chats/{chat_id}/stream",
-            json={"content": "anything", "file_ids": None},
-        )
-        assert r.status_code == 400
-        assert "RAG is enabled" in r.json()["detail"]
-        assert len(fake_ollama.stream_calls) == 0
+        frames = await _read_stream(async_client, chat_id, "anything")
+        assert any(f.get("type") == "done" for f in frames)
+        # RAG was skipped entirely — no retrieve call, no get_info call.
+        assert fake_rag.retrieve_calls == []
+        # Ollama was still invoked (chat works without RAG context).
+        assert len(fake_ollama.stream_calls) == 1
     finally:
         await async_client.delete(f"/api/v1/projects/{project_id}")
 

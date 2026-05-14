@@ -2,7 +2,8 @@
 API endpoints for project management.
 """
 
-from typing import Annotated
+from typing import Annotated, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -11,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db, get_project_or_404
 from app.core.logging import get_logger
-from app.db.models import Chat, Project, ProjectFile, User
+from app.db.models import Chat, Project, ProjectFile, RagServer, User
 from app.db.models import Settings as UserSettings
 from app.schemas.chat import ChatListResponse, ChatResponse
 from app.schemas.project import (
@@ -23,13 +24,33 @@ from app.schemas.project import (
     ProjectResponse,
     ProjectUpdate,
     ProjectWithDetails,
-    RagInfoRequest,
 )
 from app.services.ollama_service import ollama_service
-from app.services.rag_service import rag_service
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+
+async def _validate_rag_server_owned(
+    db: AsyncSession,
+    user: User,
+    rag_server_id: Optional[UUID],
+) -> None:
+    """Raise 422 if the referenced RAG server is missing or owned by another user."""
+    if rag_server_id is None:
+        return
+    server = (
+        await db.execute(
+            select(RagServer).where(
+                RagServer.id == rag_server_id, RagServer.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if server is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="rag_server_id does not refer to a RAG server you own.",
+        )
 
 
 @router.get("", response_model=ProjectListResponse)
@@ -73,8 +94,7 @@ async def list_projects(
                 "auto_attach_all_files": project.auto_attach_all_files,
                 "memory": project.memory,
                 "rag_enabled": project.rag_enabled,
-                "rag_server_url": project.rag_server_url,
-                "rag_corpus_id": project.rag_corpus_id,
+                "rag_server_id": project.rag_server_id,
                 "rag_top_k": project.rag_top_k,
                 "is_archived": project.is_archived,
                 "created_at": project.created_at,
@@ -139,8 +159,7 @@ async def get_project(
         max_tokens=project_with_details.max_tokens,
         auto_attach_all_files=project_with_details.auto_attach_all_files,
         rag_enabled=project_with_details.rag_enabled,
-        rag_server_url=project_with_details.rag_server_url,
-        rag_corpus_id=project_with_details.rag_corpus_id,
+        rag_server_id=project_with_details.rag_server_id,
         rag_top_k=project_with_details.rag_top_k,
         is_archived=project_with_details.is_archived,
         created_at=project_with_details.created_at,
@@ -159,6 +178,10 @@ async def create_project(
 ):
     """Create a new project owned by the current user."""
     try:
+        await _validate_rag_server_owned(
+            db, current_user, project_data.rag_server_id
+        )
+
         new_project = Project(
             user_id=current_user.id,
             name=project_data.name,
@@ -169,8 +192,7 @@ async def create_project(
             max_tokens=project_data.max_tokens,
             auto_attach_all_files=project_data.auto_attach_all_files,
             rag_enabled=project_data.rag_enabled,
-            rag_server_url=project_data.rag_server_url,
-            rag_corpus_id=project_data.rag_corpus_id,
+            rag_server_id=project_data.rag_server_id,
             rag_top_k=project_data.rag_top_k,
         )
         db.add(new_project)
@@ -189,8 +211,7 @@ async def create_project(
             max_tokens=new_project.max_tokens,
             auto_attach_all_files=new_project.auto_attach_all_files,
             rag_enabled=new_project.rag_enabled,
-            rag_server_url=new_project.rag_server_url,
-            rag_corpus_id=new_project.rag_corpus_id,
+            rag_server_id=new_project.rag_server_id,
             rag_top_k=new_project.rag_top_k,
             is_archived=new_project.is_archived,
             created_at=new_project.created_at,
@@ -199,6 +220,8 @@ async def create_project(
             file_count=0,
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating project: {e}")
         raise HTTPException(
@@ -210,6 +233,7 @@ async def create_project(
 @router.patch("/{project_id}", response_model=ProjectResponse)
 async def update_project(
     project_data: ProjectUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
     project: Project = Depends(get_project_or_404),
     db: AsyncSession = Depends(get_db),
 ):
@@ -227,6 +251,11 @@ async def update_project(
     # Update fields. For nullable string fields we use the request's `model_fields_set`
     # so the caller can explicitly clear (set to null) versus omit (leave unchanged).
     fields_set = project_data.model_fields_set
+
+    if "rag_server_id" in fields_set:
+        await _validate_rag_server_owned(
+            db, current_user, project_data.rag_server_id
+        )
 
     if project_data.name is not None:
         project.name = project_data.name
@@ -246,10 +275,8 @@ async def update_project(
         project.auto_attach_all_files = project_data.auto_attach_all_files
     if project_data.rag_enabled is not None:
         project.rag_enabled = project_data.rag_enabled
-    if "rag_server_url" in fields_set:
-        project.rag_server_url = project_data.rag_server_url
-    if "rag_corpus_id" in fields_set:
-        project.rag_corpus_id = project_data.rag_corpus_id
+    if "rag_server_id" in fields_set:
+        project.rag_server_id = project_data.rag_server_id
     if "rag_top_k" in fields_set:
         project.rag_top_k = project_data.rag_top_k
 
@@ -277,8 +304,7 @@ async def update_project(
         max_tokens=project.max_tokens,
         auto_attach_all_files=project.auto_attach_all_files,
         rag_enabled=project.rag_enabled,
-        rag_server_url=project.rag_server_url,
-        rag_corpus_id=project.rag_corpus_id,
+        rag_server_id=project.rag_server_id,
         rag_top_k=project.rag_top_k,
         is_archived=project.is_archived,
         created_at=project.created_at,
@@ -493,28 +519,6 @@ async def get_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving file",
         ) from e
-
-
-@router.post("/{project_id}/rag/info")
-async def get_rag_info(
-    body: RagInfoRequest,
-    project: Project = Depends(get_project_or_404),
-):
-    """
-    Proxy a GET /rag/info call to the supplied RAG server URL.
-
-    Used by the "Test connection" button in project settings: the user types
-    a URL, we call the server, and return its info payload so the UI can
-    populate the corpus dropdown. The URL is taken from the request body
-    (not from the project) so the user can validate before saving.
-
-    Connection failures surface as 503 via the RagConnectionError handler.
-    """
-    info = await rag_service.get_info(body.rag_server_url)
-    logger.info(
-        f"Fetched RAG /info for project {project.id} from {body.rag_server_url}"
-    )
-    return info
 
 
 @router.delete("/{project_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
