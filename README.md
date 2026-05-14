@@ -1,90 +1,70 @@
 # Ollama Chat
 
-A desktop chat application for interacting with locally-installed Ollama models. Built with FastAPI, React, and PostgreSQL, all running in Docker containers.
+A web chat application for interacting with locally-installed Ollama models. FastAPI + React + Postgres in Docker; Ollama runs on the host.
 
 ## Features
 
-- **Projects**: Organize chats into projects with custom instructions
-- **Chat Management**: Create, rename, and delete conversations
-- **Multiple Models**: Switch between any Ollama model installed on your machine
-- **Streaming Responses**: Real-time AI responses with stop capability
-- **Persistent Storage**: All chats and projects saved in PostgreSQL
-- **Error Handling**: Graceful error boundaries prevent app crashes
-- **Accessibility**: Full keyboard navigation and screen reader support
-- **Toast Notifications**: User-friendly feedback for all actions
-- **Dark Mode UI**: Clean, modern interface
+- **Projects**: organize related chats; give each project its own custom system instructions and a per-project default model
+- **Per-message file attachment**: upload `txt`/`json`/`csv`/`md` files to a project, then pick exactly which files to attach to each message. Per-project toggle to pre-select all on every new turn.
+- **Streaming responses** over `POST` + NDJSON with mid-stream stop support. Partial responses are persisted with a `truncated` flag if the stream is aborted or fails.
+- **Auto-generated chat titles** after the first assistant response (runs as a background task; does not block the stream).
+- **Cascading model settings**: per-chat → per-project → global → hardcoded fallback.
+- **URL-driven navigation**: refresh, back/forward, and deep-links all work.
+- **Multi-user-ready data model**: every row is scoped by `user_id`; login UI is not enabled by default (single-user mode), but the schema and request pipeline are ready for it.
 
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
-- [Ollama](https://ollama.ai/) running locally with at least one model installed
-- 4GB+ RAM recommended
+- [Ollama](https://ollama.ai/) running locally with at least one model installed (`ollama pull mistral:7b` works as a small starter model)
+- ~4 GB free RAM (the model is what's heavy; the app itself is small)
 
 ## Quick Start
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd ollama_gui_app
-   ```
+1. Clone the repo and `cd` into it.
+2. `cp .env.example .env` and set at least `POSTGRES_PASSWORD`.
+3. `make dev` — starts Postgres + FastAPI (hot reload) + Vite dev server.
+4. Open <http://localhost:5173>. API docs at <http://localhost:8000/docs>.
 
-2. **Create your environment file**
-   ```bash
-   cp .env.example .env
-   ```
-
-3. **Configure `.env`** (required):
-   ```
-   POSTGRES_PASSWORD=your_password_here
-   ```
-
-4. **Start the application**
-   ```bash
-   make dev
-   ```
-
-5. **Open the app**
-   - Frontend: http://localhost:5173
-   - API docs: http://localhost:8000/docs
+`make clean && make dev` wipes the database and starts fresh.
 
 ## Configuration
 
-Edit `.env` to customize:
+`.env` (copy from `.env.example`):
 
 | Variable | Description | Default |
-|----------|-------------|---------|
-| `POSTGRES_USER` | Database username | `postgres` |
-| `POSTGRES_PASSWORD` | Database password | *required* |
-| `POSTGRES_DB` | Database name | `ollama_chat` |
+|---|---|---|
+| `POSTGRES_PASSWORD` | Database password | **required** |
+| `POSTGRES_USER` / `POSTGRES_DB` | Database user / name | `postgres` / `ollama_chat` |
 | `OLLAMA_BASE_URL` | Ollama API endpoint | `http://host.docker.internal:11434` |
-| `DEFAULT_MODEL` | Default model for new chats *(seed only — see note below)* | `qwen2.5-coder:14b` |
-| `DEBUG` | Enable debug mode | `true` |
+| `DEFAULT_MODEL` | Seed value for new installs' default chat model | `qwen2.5-coder:14b` |
+| `DEBUG` | Debug mode (verbose logs, no SECRET_KEY check) | `true` |
 | `RUN_MIGRATIONS_ON_STARTUP` | Apply `alembic upgrade head` in the FastAPI lifespan | `true` |
+| `AUTH_ENABLED` | Reserved; flipping to `true` currently raises (login flow not yet shipped) | `false` |
+| `CORS_ORIGINS` | Comma-separated allowed origins | `http://localhost:5173,...` (includes `127.0.0.1` variants) |
 
-**Note on `DEFAULT_MODEL` and friends**: env vars are *seed values only*. On
-first init the backend writes them into the `settings` row in the database;
-after that, the database is canonical. Changing the env var on a running
-install will not retroactively update existing settings — edit them via the
-**Settings** UI in the app instead.
+**`DEFAULT_MODEL` and friends are seed values only.** On first init the backend writes them into the per-user `settings` row in the database; after that, the database is canonical. Edit your defaults in the **Settings** view inside the app — changing the env var on a running install will not update existing rows.
 
-## Available Commands
+## Available commands
 
 ```bash
-make dev        # Start with hot reload (development)
-make up         # Start in production mode
-make down       # Stop all services
-make clean      # Stop and remove all data (including database)
-make test       # Run backend tests
-make logs       # View container logs
-make shell-db   # Open PostgreSQL shell
+make dev          # development stack with hot reload
+make up           # production-style stack (no hot reload)
+make down         # stop everything
+make clean        # stop + delete the postgres volume (wipes data)
+make test         # backend pytest suite
+make logs         # tail all container logs
+make shell-db     # psql into the postgres container
+make migrate-up   # apply pending migrations manually (also runs on startup)
+
+docker exec ollama_frontend npm test    # frontend Vitest suite
 ```
 
 ## Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│    Frontend     │────▶│     Backend     │────▶│    PostgreSQL   │
-│   React/Vite    │     │    FastAPI      │     │                 │
+│    Frontend     │────▶│     Backend     │────▶│   PostgreSQL    │
+│  React + Vite   │     │     FastAPI     │     │       16        │
 │   Port 5173     │     │   Port 8000     │     │   Port 5432     │
 └─────────────────┘     └────────┬────────┘     └─────────────────┘
                                  │
@@ -96,54 +76,59 @@ make shell-db   # Open PostgreSQL shell
                         └─────────────────┘
 ```
 
+Frontend uses React Router for navigation and Zustand for state. Streaming is POST + `fetch` ReadableStream with NDJSON framing — one JSON object per `\n`-terminated line: `{"type":"chunk","content":"..."}`, `{"type":"done","truncated":bool}`, or `{"type":"error","message":"..."}`.
+
 ## Usage
 
 ### Projects
-1. Click **"+ Create Project"** to create a new project
-2. Navigate to project settings to add custom instructions
-3. Create chats within a project - they will automatically use the project's custom instructions
-4. Delete projects to remove all associated chats
+1. Click **"+ Create Project"** in the sidebar.
+2. In the project view, expand **Project Settings** to add custom instructions and project-level defaults (model, temperature, max tokens).
+3. Upload files (`txt`/`json`/`csv`/`md`) — they show up in the per-message attach picker inside any chat in this project.
+4. Tick **"Auto-attach all project files to new messages"** if you want every new message to pre-select all files (you can still deselect any before sending).
+5. Deleting a project cascade-deletes its chats and files.
 
-### Standalone Chats
-1. Click **"+ New Chat"** in the header to create a standalone chat
-2. Select a model from the dropdown before creating the chat
-3. Standalone chats appear in the "Chats" section, separate from projects
+### Chats
+- **Standalone chats** are created from the sidebar's **"+ New Chat"** button.
+- **Project chats** are created from inside the project view.
+- Each chat has its own model selector and supports per-chat overrides for temperature / max tokens.
 
-### Keyboard Shortcuts
-- `Enter`: Send message or activate focused item
-- `Shift + Enter`: New line in message input
-- `Tab`: Navigate between interactive elements
-- `Escape`: Cancel editing (when renaming chats)
+### Per-message file attachment
+Inside a project chat, the message input shows a chip for every project file. Click to attach/detach. Empty selection = no files attached to that turn. The chat history records which files were attached to each user message.
+
+### Keyboard shortcuts
+- `Enter` — send message
+- `Shift + Enter` — new line
+- `Tab` — navigate interactive elements
+- `Escape` — cancel rename
+
+## Testing
+
+- **Backend** (pytest): `make test` — covers streaming correctness, per-user isolation, selective file attachment, CRUD for chats/projects/files/settings, Ollama model listing.
+- **Frontend** (Vitest + Testing Library + jsdom): `docker exec ollama_frontend npm test` — covers Zustand stores and the streaming hook.
+- **CI**: `.github/workflows/ci.yml` runs both on push/PR plus ruff/black/mypy/eslint/tsc and a Docker image build. See [CLAUDE.md](./CLAUDE.md) for the dev-loop details.
 
 ## Troubleshooting
 
 **Ollama connection failed**
-- Ensure Ollama is running: `ollama serve`
-- Check that you have at least one model: `ollama list`
+- Ensure Ollama is running on the host: `ollama serve`
+- Verify the model your chats are configured to use is actually installed: `ollama list`. The default chat model can be changed from the **Settings** view in the app.
 
 **Database connection error**
-- Run `make clean` to reset the database
-- Ensure `POSTGRES_PASSWORD` is set in `.env`
+- `make clean && make dev` to start with a fresh database. **This wipes all data.**
+- Confirm `POSTGRES_PASSWORD` is set in `.env`.
+
+**Port already in use**
+- Most often a stale Docker container with a leaked port reservation. `docker compose down` clears project state; if it persists, `lsof -nP -iTCP:<port>` finds the holder.
 
 **Upgrading from a pre-Alembic install**
-The database schema was previously bootstrapped by `postgres/init.sql` plus
-implicit table creation from the FastAPI lifespan. As of Phase 2 of
-`PLAN_NEW.md`, Alembic is the single source of truth and migrations run on
-startup. If you had an older install before this change, run **once**:
+Older installs bootstrapped the schema from `postgres/init.sql` plus `Base.metadata.create_all` at startup. The repo no longer ships that path — Alembic is the single source of truth. **Once** on an existing install:
 
 ```bash
 docker exec ollama_backend alembic stamp 005bd22e40f1
 docker exec ollama_backend alembic upgrade head
 ```
 
-The `stamp` step tells Alembic that your existing schema is at the initial
-revision (so it doesn't try to re-create existing tables); `upgrade head`
-then applies any migrations newer than your install. Fresh installs do not
-need this — migrations run automatically on first boot.
-
-**Port already in use**
-- Stop other services using ports 5173, 8000, or 5432
-- Or modify the port mappings in `docker-compose.yml`
+`stamp` records the existing schema as the initial revision (preventing duplicate-table errors); `upgrade head` then applies any newer migrations. Fresh installs need neither.
 
 ## License
 
