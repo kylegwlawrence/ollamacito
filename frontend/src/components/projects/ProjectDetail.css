@@ -101,7 +101,6 @@
   font-size: var(--fs-title);
   font-weight: var(--fw-medium);
   margin: 0;
-  flex: 1;
 }
 
 .project-detail__settings-form {

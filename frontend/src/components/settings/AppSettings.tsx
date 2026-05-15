@@ -5,6 +5,7 @@ import { useToastStore } from '@/stores/toastStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useModels } from '@/hooks/useModels'
 import { useDebouncedCallback } from '@/hooks/useDebouncedCallback'
+import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ViewHeader } from '../common/ViewHeader'
 import { Icon } from '../common/Icon'
@@ -29,6 +30,7 @@ export const AppSettings = () => {
   const [temperature, setTemperature] = useState<string>('')
   const [maxTokens, setMaxTokens] = useState<string>('')
   const [numCtx, setNumCtx] = useState<string>('')
+  const [isSaving, setIsSaving] = useState(false)
 
   const parsedMaxTokens = maxTokens ? parseInt(maxTokens, 10) : NaN
   const parsedNumCtx = numCtx ? parseInt(numCtx, 10) : NaN
@@ -57,6 +59,31 @@ export const AppSettings = () => {
   }
 
   const persistDebounced = useDebouncedCallback(persist, AUTOSAVE_DELAY_MS)
+
+  const handleSave = async () => {
+    persistDebounced.cancel()
+    setIsSaving(true)
+    const patch: Partial<Settings> = {}
+    if (defaultModel) patch.default_model = defaultModel
+    if (conversationSummarizationModel) patch.conversation_summarization_model = conversationSummarizationModel
+    const parsedTemp = parseFloat(temperature)
+    if (Number.isFinite(parsedTemp) && parsedTemp >= 0 && parsedTemp <= 2) {
+      patch.default_temperature = parsedTemp
+    }
+    if (!tokenBudgetError) {
+      const parsedMax = parseInt(maxTokens, 10)
+      if (Number.isFinite(parsedMax) && parsedMax > 0) patch.default_max_tokens = parsedMax
+    }
+    const parsedCtx = parseInt(numCtx, 10)
+    if (Number.isFinite(parsedCtx) && parsedCtx > 0) patch.num_ctx = parsedCtx
+    const updated = await updateSettings(patch)
+    setIsSaving(false)
+    if (updated) {
+      showToast('Settings saved', 'success')
+    } else {
+      showToast('Failed to save settings', 'error')
+    }
+  }
 
   // Numeric/text fields: update local state, validate, debounce-save when valid.
   const handleTemperatureChange = (value: string) => {
@@ -129,7 +156,19 @@ export const AppSettings = () => {
             Home
           </button>
         }
-        title="Application Settings"
+        title={
+          <div className="app-settings__title-row">
+            <span>Application Settings</span>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleSave}
+              disabled={isSaving || !!tokenBudgetError}
+            >
+              {isSaving ? 'Saving…' : 'Save Changes'}
+            </Button>
+          </div>
+        }
       />
 
       <div className="app-settings__body">

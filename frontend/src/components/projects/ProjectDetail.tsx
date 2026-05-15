@@ -55,6 +55,8 @@ export const ProjectDetail = () => {
   const [editedRagServerId, setEditedRagServerId] = useState<string>('')
   const [editedRagTopK, setEditedRagTopK] = useState<string>('')
 
+  const [isSavingSettings, setIsSavingSettings] = useState(false)
+
   // Memory section state
   const [memoryDraft, setMemoryDraft] = useState('')
   const [isGeneratingMemory, setIsGeneratingMemory] = useState(false)
@@ -123,6 +125,40 @@ export const ProjectDetail = () => {
   }
 
   const persistDebounced = useDebouncedCallback(persistProject, AUTOSAVE_DELAY_MS)
+
+  const handleProjectSave = async () => {
+    if (!currentProjectId || !currentProject) return
+    persistDebounced.cancel()
+    setIsSavingSettings(true)
+    try {
+      const patch: ProjectUpdate = {}
+      if (editedName.trim()) patch.name = editedName.trim()
+      patch.custom_instructions = editedInstructions.trim() || undefined
+      patch.default_model = editedDefaultModel || undefined
+      const parsedTemp = parseFloat(editedTemperature)
+      if (Number.isFinite(parsedTemp)) patch.temperature = parsedTemp
+      const parsedMax = parseInt(editedMaxTokens, 10)
+      if (Number.isFinite(parsedMax) && parsedMax > 0) patch.max_tokens = parsedMax
+      patch.auto_attach_all_files = editedAutoAttachAllFiles
+      patch.rag_enabled = editedRagEnabled
+      patch.rag_server_id = editedRagServerId || null
+      const parsedTopK = parseInt(editedRagTopK, 10)
+      patch.rag_top_k = Number.isFinite(parsedTopK) && parsedTopK >= 1 && parsedTopK <= 50 ? parsedTopK : null
+
+      const updated = await updateProject(currentProjectId, patch)
+      if (updated) {
+        setCurrentProject({ ...updated, files: currentProject.files })
+        showToast('Project settings saved', 'success')
+      } else {
+        showToast('Failed to save project settings', 'error')
+      }
+    } catch (err) {
+      console.error('Failed to save project settings:', err)
+      showToast('Failed to save project settings', 'error')
+    } finally {
+      setIsSavingSettings(false)
+    }
+  }
 
   const loadProjectData = async () => {
     if (!currentProjectId) return
@@ -476,6 +512,14 @@ export const ProjectDetail = () => {
           <div className="project-detail__settings-header">
             <Icon name="tune" size={18} />
             <h2 className="project-detail__settings-title">Project Settings</h2>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleProjectSave}
+              disabled={isSavingSettings}
+            >
+              {isSavingSettings ? 'Saving…' : 'Save Changes'}
+            </Button>
           </div>
 
           <div className="project-detail__settings-form">

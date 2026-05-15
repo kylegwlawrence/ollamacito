@@ -33,6 +33,12 @@
   color: var(--on-surf-0);
 }
 
+.app-settings__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
 .app-settings__header-actions {
   display: flex;
   align-items: center;
