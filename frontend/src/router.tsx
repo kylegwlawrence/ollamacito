@@ -13,6 +13,9 @@ import { PromptDialog } from './components/common/PromptDialog'
 import { ToastContainer } from './components/common/ToastContainer'
 import { Sidebar } from './components/sidebar/Sidebar'
 import { ChatContainer } from './components/chat/ChatContainer'
+import { CourseDetail } from './components/courses/CourseDetail'
+import { CourseList } from './components/courses/CourseList'
+import { NewCourseForm } from './components/courses/NewCourseForm'
 import { ProjectDetail } from './components/projects/ProjectDetail'
 import { RagServersPage } from './components/rag-servers/RagServersPage'
 import { AppSettings } from './components/settings/AppSettings'
@@ -57,6 +60,9 @@ export const router = createBrowserRouter([
       { index: true, element: <ChatContainer /> },
       { path: 'chats/:chatId', element: <ChatContainer /> },
       { path: 'projects/:projectId', element: <ProjectDetail /> },
+      { path: 'courses', element: <CourseList /> },
+      { path: 'courses/new', element: <NewCourseForm /> },
+      { path: 'courses/:courseId', element: <CourseDetail /> },
       { path: 'rag-servers', element: <RagServersPage /> },
       { path: 'settings', element: <AppSettings /> },
     ],

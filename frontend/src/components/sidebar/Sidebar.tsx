@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMatch, useNavigate } from 'react-router-dom'
 import { useChatStore } from '@/stores/chatStore'
 import { useChats } from '@/hooks/useChats'
+import { useCourseStore } from '@/stores/courseStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useConfirmStore } from '@/stores/confirmStore'
 import { useProjectsStore } from '@/stores/projectsStore'
@@ -31,8 +32,14 @@ export const Sidebar = () => {
   const navigate = useNavigate()
   const projectMatch = useMatch('/projects/:projectId/*')
   const currentProjectId = projectMatch?.params.projectId ?? null
+  const courseMatch = useMatch('/courses/:courseId/*')
+  const currentCourseId = courseMatch?.params.courseId ?? null
+  const courses = useCourseStore((s) => s.courses)
+  const coursesLoading = useCourseStore((s) => s.loading)
+  const coursesLoaded = useCourseStore((s) => s.loaded)
 
   const [projectsExpanded, setProjectsExpanded] = useState(true)
+  const [coursesExpanded, setCoursesExpanded] = useState(true)
   const [chatsExpanded, setChatsExpanded] = useState(true)
 
   useEffect(() => {
@@ -200,6 +207,78 @@ export const Sidebar = () => {
                     onDelete={() => handleDeleteProject(project.id, project.chat_count)}
                   />
                 ))
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Courses */}
+        <section className="sidebar__group" aria-labelledby="courses-heading">
+          <button
+            className="sidebar__group-header"
+            onClick={() => setCoursesExpanded(!coursesExpanded)}
+            aria-expanded={coursesExpanded}
+            aria-controls="courses-list"
+          >
+            <span id="courses-heading" className="sidebar__group-label">Courses</span>
+            <Icon
+              name="expand_more"
+              size={16}
+              className={`sidebar__group-chevron${coursesExpanded ? ' sidebar__group-chevron--open' : ''}`}
+            />
+          </button>
+
+          {coursesExpanded && (
+            <div id="courses-list" className="sidebar__group-items" role="list">
+              {coursesLoading && !coursesLoaded ? (
+                <div className="sidebar__loading">
+                  <LoadingSpinner />
+                </div>
+              ) : courses.length === 0 ? (
+                <div className="sidebar__empty">
+                  <button
+                    type="button"
+                    className="sidebar__settings-link"
+                    onClick={() => navigate('/courses/new')}
+                    title="Create a new course"
+                  >
+                    <Icon name="add" size={16} />
+                    <span>New course</span>
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {courses.map((course) => {
+                    const isActive = currentCourseId === course.id
+                    return (
+                      <button
+                        key={course.id}
+                        type="button"
+                        className={`sidebar__settings-link${isActive ? ' is-active' : ''}`}
+                        onClick={() => navigate(`/courses/${course.id}`)}
+                        title={course.title}
+                        style={{
+                          fontWeight: isActive ? 'var(--fw-semibold)' : undefined,
+                          background: isActive ? 'var(--surf-2)' : undefined,
+                        }}
+                      >
+                        <Icon name="school" size={16} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {course.title}
+                        </span>
+                      </button>
+                    )
+                  })}
+                  <button
+                    type="button"
+                    className="sidebar__settings-link"
+                    onClick={() => navigate('/courses/new')}
+                    title="Create a new course"
+                  >
+                    <Icon name="add" size={16} />
+                    <span>New course</span>
+                  </button>
+                </>
               )}
             </div>
           )}
