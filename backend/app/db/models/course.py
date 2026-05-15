@@ -1,10 +1,11 @@
 """
 Database model for generated course outlines.
 
-A Course is a single generated educational outline scoped to a Project. The
-Project carries the RAG-server config (corpus + URL + top_k) used by the
-agent's `search_wikipedia` tool during the research phase of generation, so a
-Course implicitly inherits its source corpus from its Project.
+A Course is a first-class entity: it carries its own RAG-server config
+(rag_server_id + rag_top_k) used by the agent's `search_wikipedia` tool
+during the research phase. Courses do not depend on Projects — a user can
+generate a course against any RAG server they own, regardless of whether
+any projects exist.
 """
 
 import enum
@@ -12,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,7 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.db.models.project import Project
+    from app.db.models.rag_server import RagServer
     from app.db.models.user import User
 
 
@@ -50,12 +51,16 @@ class Course(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
-    project_id: Mapped[uuid.UUID] = mapped_column(
+    # RAG server + top_k owned directly by the course; ON DELETE RESTRICT so
+    # you can't delete a RAG server that a course depends on (the UI surfaces
+    # this as a 4xx). See the standalone-RAG migration for the FK definition.
+    rag_server_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
+        ForeignKey("rag_servers.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
+    rag_top_k: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(256), nullable=False)
     status: Mapped[CourseStatus] = mapped_column(
         SAEnum(CourseStatus, name="course_status"),
@@ -81,9 +86,9 @@ class Course(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
 
-    # Relationships (unidirectional; User/Project don't need a courses list today)
+    # Relationships (unidirectional; User/RagServer don't need a courses list today)
     user: Mapped["User"] = relationship("User")
-    project: Mapped["Project"] = relationship("Project")
+    rag_server: Mapped["RagServer"] = relationship("RagServer")
 
     def __repr__(self) -> str:
         return f"<Course(id={self.id}, title={self.title}, status={self.status.value})>"

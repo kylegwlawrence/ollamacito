@@ -239,14 +239,22 @@ class CourseOutline(BaseModel):
 class CourseCreate(BaseModel):
     """Payload for POST /api/v1/courses."""
 
-    project_id: UUID
+    rag_server_id: UUID
+    rag_top_k: int = Field(..., ge=1, le=50)
     input: CourseGenerationRequest
 
 
 class CourseUpdate(BaseModel):
-    """Payload for PATCH /api/v1/courses/{id}. v1 only supports title edits."""
+    """Payload for PATCH /api/v1/courses/{id}.
+
+    Title is the most common edit. rag_server_id / rag_top_k can also be
+    changed to point the course at a different corpus (next regenerate uses
+    the updated values).
+    """
 
     title: Optional[str] = Field(None, min_length=1, max_length=256)
+    rag_server_id: Optional[UUID] = None
+    rag_top_k: Optional[int] = Field(None, ge=1, le=50)
 
 
 class CourseRegenerateRequest(BaseModel):
@@ -271,7 +279,8 @@ class CourseResponse(BaseModel):
 
     id: UUID
     user_id: UUID
-    project_id: UUID
+    rag_server_id: UUID
+    rag_top_k: int
     title: str
     status: CourseStatus
     input: CourseGenerationRequest
@@ -292,7 +301,8 @@ class CourseListItem(BaseModel):
 
     id: UUID
     title: str
-    project_id: UUID
+    rag_server_id: UUID
+    rag_top_k: int
     status: CourseStatus
     total_hours: Optional[float] = Field(
         None, description="Derived from outline.total_hours; null until generated."
