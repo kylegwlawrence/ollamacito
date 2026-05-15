@@ -79,7 +79,7 @@ export const ProjectDetail = () => {
     setSelectedModel(modelToUse)
   }, [currentProject?.default_model, settings.default_model])
 
-  // Initialize settings form when project loads
+  // Initialize settings form when project loads.
   useEffect(() => {
     if (currentProject) {
       setEditedName(currentProject.name)
@@ -92,6 +92,12 @@ export const ProjectDetail = () => {
       setEditedRagServerId(currentProject.rag_server_id || '')
       setEditedRagTopK(currentProject.rag_top_k?.toString() || '')
     }
+    // `settings.default_temperature` / `settings.default_max_tokens` are read
+    // here as fallbacks but intentionally omitted from the dep array —
+    // including them would re-run this effect on every settings change and
+    // clobber unsaved edits in the temperature / max_tokens fields. The
+    // initialize-on-project-load semantics are what we want.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProject])
 
   // Re-sync memory draft when the loaded project changes

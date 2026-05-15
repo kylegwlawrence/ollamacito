@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -159,9 +159,12 @@ describe('NewCourseForm', () => {
     await user.click(submit)
 
     expect(createCourseMock).toHaveBeenCalledTimes(1)
-    const calledWith = createCourseMock.mock.calls[0][0]
-    expect(calledWith.project_id).toBe('p1')
-    expect(calledWith.input.topic).toBe('Photosynthesis')
+    expect(createCourseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project_id: 'p1',
+        input: expect.objectContaining({ topic: 'Photosynthesis' }),
+      })
+    )
 
     expect(navigateMock).toHaveBeenCalledWith('/courses/c-new', {
       state: { autoStart: true },
