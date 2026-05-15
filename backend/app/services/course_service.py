@@ -18,6 +18,7 @@ Pipeline:
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Optional
+from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -27,6 +28,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings as app_settings
 from app.core.logging import get_logger
 from app.db.models import Course, CourseStatus, Project, Settings
+from app.db.session import AsyncSessionLocal
 from app.schemas.course import (
     AgeCategory,
     CourseGenerationRequest,
@@ -231,149 +233,180 @@ async def _run_research_phase(
 
 async def generate_course(
     *,
-    course: Course,
-    project: Project,
-    db: AsyncSession,
-    user_settings: Settings,
+    course_id: UUID,
+    user_id: UUID,
     is_disconnected: Callable[[], Awaitable[bool]],
 ) -> AsyncGenerator[Dict[str, Any], None]:
-    """Drive the two-step pipeline. Yields frames; mutates+persists `course`.
+    """Drive the two-step pipeline against a fresh DB session.
 
-    The endpoint serializes each yielded frame as NDJSON. Internal frames
-    (those whose `type` starts with `_`) are filtered by this function and
-    not yielded to the caller — they are an internal coordination channel
-    between phases.
+    Yields frames for the caller (the streaming endpoint) to serialize as
+    NDJSON. The course row is mutated and committed inside this generator;
+    we deliberately do NOT reuse the request's session because dependency
+    cleanup may close it before the stream finishes (mirrors the chat
+    agent's persistence pattern — see `_persist_assistant_message`).
+
+    Internal frames (those whose `type` starts with `_`) are an internal
+    coordination channel between phases and are filtered before yielding
+    to the caller.
     """
-    try:
-        request = CourseGenerationRequest.model_validate(course.input)
-    except ValidationError as exc:
-        msg = f"Stored input failed validation: {exc.errors()}"
-        course.status = CourseStatus.FAILED
-        course.validation_errors = [{"path": "input", "msg": msg}]
+    async with AsyncSessionLocal() as db:
+        # Load the course + project + rag_server eagerly so the agent loop
+        # can read project.rag_server without lazy-loading on a closed session.
+        course = (
+            await db.execute(
+                select(Course)
+                .where(Course.id == course_id, Course.user_id == user_id)
+                .options(selectinload(Course.project).selectinload(Project.rag_server))
+            )
+        ).scalar_one_or_none()
+        if course is None:
+            yield {"type": "error", "message": f"Course {course_id} not found"}
+            yield {"type": "done", "status": CourseStatus.FAILED.value}
+            return
+
+        # Load the user's Settings inside this session too.
+        user_settings = (
+            await db.execute(select(Settings).where(Settings.user_id == user_id))
+        ).scalar_one_or_none()
+        if user_settings is None:
+            yield {"type": "error", "message": "User settings missing"}
+            yield {"type": "done", "status": CourseStatus.FAILED.value}
+            return
+
+        project = course.project
+
+        try:
+            request = CourseGenerationRequest.model_validate(course.input)
+        except ValidationError as exc:
+            msg = f"Stored input failed validation: {exc.errors()}"
+            course.status = CourseStatus.FAILED
+            course.validation_errors = [{"path": "input", "msg": msg}]
+            await db.commit()
+            yield {"type": "error", "message": msg}
+            yield {"type": "done", "status": course.status.value}
+            return
+
+        if not _project_has_full_rag_config(project):
+            msg = (
+                "Project RAG is not fully configured (rag_enabled, rag_server, "
+                "rag_top_k all required). Configure it from the project settings, "
+                "then retry."
+            )
+            course.status = CourseStatus.FAILED
+            course.validation_errors = [{"path": "project.rag", "msg": msg}]
+            await db.commit()
+            yield {"type": "error", "message": msg}
+            yield {"type": "done", "status": course.status.value}
+            return
+
+        # Status -> generating, persisted so the GET endpoint reflects in-flight state.
+        course.status = CourseStatus.GENERATING
+        course.validation_errors = None
+        course.outline = None
         await db.commit()
-        yield {"type": "error", "message": msg}
-        yield {"type": "done", "status": course.status.value}
-        return
 
-    if not _project_has_full_rag_config(project):
-        msg = (
-            "Project RAG is not fully configured (rag_enabled, rag_server, "
-            "rag_top_k all required). Configure it from the project settings, "
-            "then retry."
-        )
-        course.status = CourseStatus.FAILED
-        course.validation_errors = [{"path": "project.rag", "msg": msg}]
-        await db.commit()
-        yield {"type": "error", "message": msg}
-        yield {"type": "done", "status": course.status.value}
-        return
+        model = user_settings.default_model
 
-    # Status -> generating, persisted so the GET endpoint reflects in-flight state.
-    course.status = CourseStatus.GENERATING
-    course.validation_errors = None
-    course.outline = None
-    await db.commit()
+        yield {"type": "phase", "name": "research"}
 
-    model = user_settings.default_model
-
-    yield {"type": "phase", "name": "research"}
-
-    research_notes = ""
-    research_failed = False
-    async for frame in _run_research_phase(
-        request=request,
-        project=project,
-        model=model,
-        user_settings=user_settings,
-        is_disconnected=is_disconnected,
-    ):
-        ftype = frame.get("type", "")
-        if ftype == "_research_notes":
-            research_notes = frame.get("content", "")
-            continue
-        if ftype == "error":
-            research_failed = True
-        yield frame
-
-    if research_failed:
-        course.status = CourseStatus.FAILED
-        await db.commit()
-        yield {"type": "done", "status": course.status.value}
-        return
-
-    if not research_notes.strip():
-        course.status = CourseStatus.FAILED
-        course.validation_errors = [
-            {"path": "phase-1", "msg": "research phase produced no notes"}
-        ]
-        await db.commit()
-        yield {
-            "type": "error",
-            "message": "Research phase produced no notes; cannot assemble outline.",
-        }
-        yield {"type": "done", "status": course.status.value}
-        return
-
-    yield {"type": "phase", "name": "assembling"}
-
-    assembly_system_prompt = _render_prompt(_load_prompt("course_assembly.md"), request)
-    assembly_messages = [
-        {"role": "system", "content": assembly_system_prompt},
-        {
-            "role": "user",
-            "content": (
-                f"Research notes:\n\n{research_notes}\n\n"
-                "Produce the CourseOutline JSON now."
-            ),
-        },
-    ]
-    assembly_options = {
-        # Lower temperature for structured output to stay closer to the schema.
-        "temperature": 0.2,
-        # Give the assembly call plenty of context for big research dumps.
-        "num_ctx": max(user_settings.num_ctx, 8192),
-    }
-
-    try:
-        raw_json = await ollama_service.chat_structured(
+        research_notes = ""
+        research_failed = False
+        async for frame in _run_research_phase(
+            request=request,
+            project=project,
             model=model,
-            messages=assembly_messages,
-            json_schema=CourseOutline.model_json_schema(),
-            options=assembly_options,
+            user_settings=user_settings,
+            is_disconnected=is_disconnected,
+        ):
+            ftype = frame.get("type", "")
+            if ftype == "_research_notes":
+                research_notes = frame.get("content", "")
+                continue
+            if ftype == "error":
+                research_failed = True
+            yield frame
+
+        if research_failed:
+            course.status = CourseStatus.FAILED
+            await db.commit()
+            yield {"type": "done", "status": course.status.value}
+            return
+
+        if not research_notes.strip():
+            course.status = CourseStatus.FAILED
+            course.validation_errors = [
+                {"path": "phase-1", "msg": "research phase produced no notes"}
+            ]
+            await db.commit()
+            yield {
+                "type": "error",
+                "message": "Research phase produced no notes; cannot assemble outline.",
+            }
+            yield {"type": "done", "status": course.status.value}
+            return
+
+        yield {"type": "phase", "name": "assembling"}
+
+        assembly_system_prompt = _render_prompt(
+            _load_prompt("course_assembly.md"), request
         )
-    except Exception as exc:
-        msg = f"Assembly call failed: {exc}"
-        logger.error(msg)
-        course.status = CourseStatus.FAILED
-        course.validation_errors = [{"path": "phase-2.ollama", "msg": str(exc)}]
-        await db.commit()
-        yield {"type": "error", "message": msg}
-        yield {"type": "done", "status": course.status.value}
-        return
-
-    try:
-        outline = CourseOutline.model_validate_json(raw_json)
-    except ValidationError as exc:
-        msg = "Assembly output failed Pydantic validation."
-        logger.error("%s Details: %s", msg, exc.errors()[:3])
-        course.status = CourseStatus.FAILED
-        course.validation_errors = [
-            {"path": "phase-2.parse", "msg": str(exc.errors()[:5])}
+        assembly_messages = [
+            {"role": "system", "content": assembly_system_prompt},
+            {
+                "role": "user",
+                "content": (
+                    f"Research notes:\n\n{research_notes}\n\n"
+                    "Produce the CourseOutline JSON now."
+                ),
+            },
         ]
+        assembly_options = {
+            # Lower temperature for structured output to stay closer to the schema.
+            "temperature": 0.2,
+            # Give the assembly call plenty of context for big research dumps.
+            "num_ctx": max(user_settings.num_ctx, 8192),
+        }
+
+        try:
+            raw_json = await ollama_service.chat_structured(
+                model=model,
+                messages=assembly_messages,
+                json_schema=CourseOutline.model_json_schema(),
+                options=assembly_options,
+            )
+        except Exception as exc:
+            msg = f"Assembly call failed: {exc}"
+            logger.error(msg)
+            course.status = CourseStatus.FAILED
+            course.validation_errors = [{"path": "phase-2.ollama", "msg": str(exc)}]
+            await db.commit()
+            yield {"type": "error", "message": msg}
+            yield {"type": "done", "status": course.status.value}
+            return
+
+        try:
+            outline = CourseOutline.model_validate_json(raw_json)
+        except ValidationError as exc:
+            msg = "Assembly output failed Pydantic validation."
+            logger.error("%s Details: %s", msg, exc.errors()[:3])
+            course.status = CourseStatus.FAILED
+            course.validation_errors = [
+                {"path": "phase-2.parse", "msg": str(exc.errors()[:5])}
+            ]
+            await db.commit()
+            yield {"type": "error", "message": msg}
+            yield {"type": "done", "status": course.status.value}
+            return
+
+        errors = validate_outline(outline, request)
+        course.outline = outline.model_dump()
+        course.validation_errors = errors or None
+        course.model_used = model
+        course.generated_at = datetime.now(timezone.utc)
+        course.status = CourseStatus.NEEDS_REVIEW if errors else CourseStatus.COMPLETE
         await db.commit()
-        yield {"type": "error", "message": msg}
+
+        yield {"type": "outline", "content": course.outline}
+        if errors:
+            yield {"type": "validation", "errors": errors}
         yield {"type": "done", "status": course.status.value}
-        return
-
-    errors = validate_outline(outline, request)
-    course.outline = outline.model_dump()
-    course.validation_errors = errors or None
-    course.model_used = model
-    course.generated_at = datetime.now(timezone.utc)
-    course.status = CourseStatus.NEEDS_REVIEW if errors else CourseStatus.COMPLETE
-    await db.commit()
-
-    yield {"type": "outline", "content": course.outline}
-    if errors:
-        yield {"type": "validation", "errors": errors}
-    yield {"type": "done", "status": course.status.value}

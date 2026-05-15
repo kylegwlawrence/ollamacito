@@ -22,7 +22,6 @@ agent endpoint. Frame types:
   {"type":"error","message":"..."}
 """
 
-import asyncio
 import json
 from typing import Annotated, AsyncGenerator
 from uuid import UUID
@@ -242,29 +241,26 @@ async def delete_course(
 
 
 async def _stream_generate(
-    course: Course,
-    db: AsyncSession,
-    user_settings: UserSettings,
+    course_id: UUID,
+    user_id: UUID,
     request: Request,
 ) -> AsyncGenerator[bytes, None]:
-    """Drive the pipeline and serialize each frame as NDJSON."""
-    project = course.project
+    """Drive the pipeline and serialize each frame as NDJSON.
+
+    The course_service opens its own DB session because the request's session
+    is closed when dependency cleanup runs (the streaming response may
+    outlive the endpoint's return). See messages.py:_persist_assistant_message
+    for the same pattern.
+    """
     try:
         async for frame in generate_course(
-            course=course,
-            project=project,
-            db=db,
-            user_settings=user_settings,
+            course_id=course_id,
+            user_id=user_id,
             is_disconnected=request.is_disconnected,
         ):
             yield _ndjson(frame)
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("Course generation stream crashed: %s", exc)
-        course.status = CourseStatus.FAILED
-        try:
-            await asyncio.shield(db.commit())
-        except Exception:
-            pass
         try:
             yield _ndjson({"type": "error", "message": f"Generation crashed: {exc}"})
             yield _ndjson({"type": "done", "status": CourseStatus.FAILED.value})
@@ -289,9 +285,11 @@ async def generate(
                 "generating, then retry."
             ),
         )
-    user_settings = await _load_user_settings(db, current_user.id)
+    # Surface a clear 500 here if the user's Settings row is missing, rather
+    # than failing later inside the streaming generator.
+    await _load_user_settings(db, current_user.id)
     return StreamingResponse(
-        _stream_generate(course, db, user_settings, request),
+        _stream_generate(course.id, current_user.id, request),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
@@ -331,9 +329,9 @@ async def regenerate(
             ),
         )
 
-    user_settings = await _load_user_settings(db, current_user.id)
+    await _load_user_settings(db, current_user.id)
     return StreamingResponse(
-        _stream_generate(course, db, user_settings, request),
+        _stream_generate(course.id, current_user.id, request),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
