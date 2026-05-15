@@ -4,6 +4,7 @@ API endpoints for message management and streaming.
 
 import asyncio
 import json
+import sys
 import uuid as uuid_lib
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -792,48 +793,73 @@ async def stream_agent_response(
 
     async def event_generator() -> AsyncGenerator[bytes, None]:
         result = AgentRunResult()
-        try:
-            async for frame in run_agent(
-                model=model_name,
-                initial_messages=ollama_messages,
-                options=options,
-                project=project,
-                result=result,
-                is_disconnected=request.is_disconnected,
-            ):
-                yield _ndjson(frame)
-        except Exception as e:
-            logger.error(f"[Req {request_id}] Agent loop crashed: {e}")
-            result.error = result.error or f"Agent loop crashed: {e}"
-            yield _ndjson({"type": "error", "message": result.error})
-
-        # Persist whatever the agent produced. We persist even when the loop
-        # errored as long as there's content — matches the /stream contract
-        # where a partial truncated message is preserved.
-        is_truncated = result.truncated or result.error is not None
         assistant_count = 0
+        is_truncated = False
         try:
-            if result.final_content or result.tool_calls_audit:
-                assistant_count = await _persist_assistant_message(
-                    chat_id=chat_id,
-                    content=result.final_content,
-                    truncated=is_truncated,
-                    rag_citations=result.rag_citations,
-                    tool_calls=result.tool_calls_audit or None,
-                )
-                logger.info(
-                    f"[Req {request_id}] Persisted agent assistant message "
-                    f"(truncated={is_truncated}, tool_calls={len(result.tool_calls_audit)})"
-                )
-        except Exception as e:
-            logger.error(
-                f"[Req {request_id}] Failed to persist agent assistant message: {e}"
+            try:
+                async for frame in run_agent(
+                    model=model_name,
+                    initial_messages=ollama_messages,
+                    options=options,
+                    project=project,
+                    result=result,
+                    is_disconnected=request.is_disconnected,
+                ):
+                    yield _ndjson(frame)
+            except Exception as e:
+                logger.error(f"[Req {request_id}] Agent loop crashed: {e}")
+                result.error = result.error or f"Agent loop crashed: {e}"
+                try:
+                    yield _ndjson({"type": "error", "message": result.error})
+                except Exception:
+                    # Client may already be gone; persistence still runs below.
+                    pass
+        finally:
+            # Persist whatever the agent produced. `finally` guarantees this runs
+            # even when the generator is closed/cancelled mid-stream (client
+            # disconnect raises asyncio.CancelledError / GeneratorExit, which are
+            # BaseException and bypass `except Exception`). Shield the DB call so
+            # cascading cancellation can't kill it mid-write.
+            #
+            # If we're in a cancellation cascade, run_agent likely never reached
+            # its normal exit points, so result.truncated may still be False even
+            # though the response was cut short. sys.exc_info() inside `finally`
+            # exposes the in-flight exception — use it to force truncated=True.
+            in_flight_exc = sys.exc_info()[0]
+            forced_truncated = in_flight_exc is not None and issubclass(
+                in_flight_exc, BaseException
             )
+            is_truncated = (
+                result.truncated or result.error is not None or forced_truncated
+            )
+            try:
+                if result.final_content or result.tool_calls_audit:
+                    assistant_count = await asyncio.shield(
+                        _persist_assistant_message(
+                            chat_id=chat_id,
+                            content=result.final_content,
+                            truncated=is_truncated,
+                            rag_citations=result.rag_citations,
+                            tool_calls=result.tool_calls_audit or None,
+                        )
+                    )
+                    logger.info(
+                        f"[Req {request_id}] Persisted agent assistant message "
+                        f"(truncated={is_truncated}, "
+                        f"tool_calls={len(result.tool_calls_audit)}, "
+                        f"forced={forced_truncated})"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"[Req {request_id}] Failed to persist agent assistant message: {e}"
+                )
 
-        # Trigger title generation on the first successful assistant turn,
-        # same rule as /stream.
-        if assistant_count == 1 and not is_truncated:
-            asyncio.create_task(generate_and_update_title(chat_id, cascade.title_model))
+            # Trigger title generation on the first successful assistant turn,
+            # same rule as /stream.
+            if assistant_count == 1 and not is_truncated:
+                asyncio.create_task(
+                    generate_and_update_title(chat_id, cascade.title_model)
+                )
 
     return StreamingResponse(
         event_generator(),

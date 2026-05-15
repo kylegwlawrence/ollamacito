@@ -1,15 +1,16 @@
 """
 Tests for the agent endpoint POST /api/v1/chats/{id}/agent.
 
-These tests bypass the real Ollama HTTP layer by monkeypatching the helpers
-inside `agent_service` (`_ollama_chat_nonstream`, `_ollama_chat_stream`).
-RAG is handled via the existing `fake_rag` fixture from conftest.
+These tests bypass the real Ollama HTTP layer by monkeypatching
+`ollama_service.client.chat` — the single entry point the agent loop now uses
+(one streaming call per iteration). RAG is handled via the existing `fake_rag`
+fixture from conftest.
 
 What's covered:
 - Happy path: model emits a tool_call, gets the result, then a final answer.
   Assistant message persists with content + rag_citations + tool_calls.
 - Iteration cap: model keeps calling tools until the cap; the forced final
-  answer is streamed and the message is marked truncated.
+  answer is streamed (with tools omitted) and the message is marked truncated.
 - Tool error on malformed args: the error frame surfaces and the error is
   fed back to the model so it can self-correct.
 - RAG server down on `get_info`: the agent emits an error frame before any
@@ -18,24 +19,28 @@ What's covered:
   chat doesn't exist.
 - User-message persistence parity with /stream: an Ollama failure mid-loop
   leaves the user message intact.
+- Empty-turn fallback: when an iteration emits neither content nor tool_calls,
+  one tool-free streaming fallback fires.
+- Interleaved chunks + tool_call in a single streaming turn: reasoning text
+  streams before the tool_call frame, and final-answer chunks land after.
 """
+
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from types import SimpleNamespace
+from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import uuid4
 
 import httpx
 import pytest
 from sqlalchemy import select
 
-from app.db.models import Chat, Message, Project
+from app.db.models import Message
 from app.db.session import AsyncSessionLocal
 from app.services import agent_service
 from app.utils.exceptions import RagConnectionError
-
 from tests.conftest import FakeRag
-
 
 # ---------- helpers ----------
 
@@ -125,7 +130,9 @@ async def _make_rag_chat(
     return project["id"], chat["id"]
 
 
-def _hit(title: str, section: Optional[str], text: str, page_id: int = 1, score: float = 0.5) -> Dict[str, Any]:
+def _hit(
+    title: str, section: Optional[str], text: str, page_id: int = 1, score: float = 0.5
+) -> Dict[str, Any]:
     return {
         "corpus": "simplewiki",
         "chunk_id": page_id,
@@ -139,83 +146,87 @@ def _hit(title: str, section: Optional[str], text: str, page_id: int = 1, score:
     }
 
 
-# ---------- fake Ollama (driven by a scripted sequence of responses) ----------
+# ---------- fake Ollama streaming client ----------
 
 
-class FakeAgentOllama:
-    """Scriptable replacement for agent_service.{_ollama_chat_nonstream, _ollama_chat_stream}.
+def _make_chat_response(chunk_data: Dict[str, Any]) -> Any:
+    """Build something that quacks like ollama.ChatResponse for the agent's
+    `getattr(chunk, "message", ...)` + `getattr(msg, "content"/"tool_calls", ...)`
+    access pattern."""
+    raw_calls = chunk_data.get("tool_calls") or []
+    tool_calls = [
+        SimpleNamespace(
+            function=SimpleNamespace(
+                name=tc.get("function", {}).get("name", ""),
+                arguments=tc.get("function", {}).get("arguments", {}),
+            )
+        )
+        for tc in raw_calls
+    ] or None
+    message = SimpleNamespace(
+        content=chunk_data.get("content", ""),
+        tool_calls=tool_calls,
+    )
+    return SimpleNamespace(message=message)
+
+
+async def _async_iter(items: List[Any]) -> AsyncIterator[Any]:
+    for item in items:
+        yield item
+
+
+class FakeAgentStream:
+    """Scriptable replacement for `ollama_service.client.chat`.
 
     Configure:
-      - nonstream_responses: list of dicts to return on consecutive non-stream calls.
-        Each dict is the value of `response.json()` from Ollama — typically
-        `{"message": {"role": "assistant", "content": "...", "tool_calls": [...]}}`.
-      - stream_chunks: list of strings to yield from the final stream call.
-      - stream_error / nonstream_error: exception to raise instead of returning.
+      - turn_scripts: list of "turns". Each turn is a list of "chunks".
+        Each chunk dict may have:
+          {"content": str}                 -> contributes to message.content
+          {"tool_calls": [{"function": {"name": str, "arguments": dict}}, ...]}
+        Chunks are emitted in order.
+      - error: exception raised on the next call (mimics Ollama failure).
 
     Inspect:
-      - nonstream_calls / stream_calls: list of kwargs dicts each call received.
+      - calls: list of kwargs each invocation received.
     """
 
     def __init__(self) -> None:
-        self.nonstream_responses: List[Dict[str, Any]] = []
-        self.stream_chunks: List[str] = []
-        self.nonstream_error: Optional[Exception] = None
-        self.stream_error: Optional[Exception] = None
-        self.nonstream_calls: List[Dict[str, Any]] = []
-        self.stream_calls: List[Dict[str, Any]] = []
-        self._nonstream_idx = 0
+        self.turn_scripts: List[List[Dict[str, Any]]] = []
+        self.error: Optional[Exception] = None
+        self.calls: List[Dict[str, Any]] = []
+        self._turn_idx = 0
 
-    async def nonstream(self, **kwargs: Any) -> Dict[str, Any]:
-        self.nonstream_calls.append(kwargs)
-        if self.nonstream_error is not None:
-            raise self.nonstream_error
-        if self._nonstream_idx >= len(self.nonstream_responses):
+    async def __call__(self, **kwargs: Any) -> AsyncIterator[Any]:
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        if self._turn_idx >= len(self.turn_scripts):
             raise AssertionError(
-                f"FakeAgentOllama: ran out of scripted non-stream responses "
-                f"(idx={self._nonstream_idx})"
+                f"FakeAgentStream: ran out of scripted turns (idx={self._turn_idx})"
             )
-        resp = self.nonstream_responses[self._nonstream_idx]
-        self._nonstream_idx += 1
-        return resp
-
-    async def stream(self, **kwargs: Any) -> AsyncGenerator[str, None]:
-        self.stream_calls.append(kwargs)
-        if self.stream_error is not None:
-            raise self.stream_error
-        for piece in self.stream_chunks:
-            yield piece
+        chunks = self.turn_scripts[self._turn_idx]
+        self._turn_idx += 1
+        return _async_iter([_make_chat_response(c) for c in chunks])
 
 
 @pytest.fixture
-def fake_agent(monkeypatch: pytest.MonkeyPatch) -> FakeAgentOllama:
-    fake = FakeAgentOllama()
-    monkeypatch.setattr(agent_service, "_ollama_chat_nonstream", fake.nonstream)
-    monkeypatch.setattr(agent_service, "_ollama_chat_stream", fake.stream)
+def fake_agent(monkeypatch: pytest.MonkeyPatch) -> FakeAgentStream:
+    fake = FakeAgentStream()
+    # Patch on the singleton the agent imports. ollama_service is the
+    # module-level instance shared with the non-agent path.
+    monkeypatch.setattr(agent_service.ollama_service.client, "chat", fake)
     return fake
 
 
-# ---------- helpers to build scripted responses ----------
+# ---------- helpers to build scripted turn entries ----------
 
 
-def _model_tool_call(query: str, content: str = "") -> Dict[str, Any]:
-    """Build a non-stream response that has a search_wikipedia tool call."""
+def _tool_call_chunk(query: Any, name: str = "search_wikipedia") -> Dict[str, Any]:
+    """Build a streaming chunk dict carrying one tool_call."""
     return {
-        "message": {
-            "role": "assistant",
-            "content": content,
-            "tool_calls": [
-                {"function": {"name": "search_wikipedia", "arguments": {"query": query}}},
-            ],
-        },
-        "done": True,
-    }
-
-
-def _model_final(content: str) -> Dict[str, Any]:
-    """Build a non-stream response with no tool_calls — model is done."""
-    return {
-        "message": {"role": "assistant", "content": content, "tool_calls": []},
-        "done": True,
+        "tool_calls": [
+            {"function": {"name": name, "arguments": {"query": query}}},
+        ],
     }
 
 
@@ -226,13 +237,13 @@ def _model_final(content: str) -> Dict[str, Any]:
 async def test_happy_path_tool_call_then_answer(
     async_client: httpx.AsyncClient,
     fake_rag: FakeRag,
-    fake_agent: FakeAgentOllama,
+    fake_agent: FakeAgentStream,
 ) -> None:
     """Model emits one tool_call, gets results, then a final answer with no tools."""
     fake_rag.hits = [_hit("Photosynthesis", "Light reactions", "Photosynthesis is …")]
-    fake_agent.nonstream_responses = [
-        _model_tool_call("photosynthesis"),
-        _model_final("Photosynthesis is the process by which …"),
+    fake_agent.turn_scripts = [
+        [_tool_call_chunk("photosynthesis")],
+        [{"content": "Photosynthesis is the process by which …"}],
     ]
 
     project_id, chat_id = await _make_rag_chat(async_client)
@@ -254,6 +265,13 @@ async def test_happy_path_tool_call_then_answer(
         assert fake_rag.retrieve_calls[0]["query"] == "photosynthesis"
         # top_k capped at 3 in agent mode regardless of project setting
         assert fake_rag.retrieve_calls[0]["top_k"] == 3
+
+        # Exactly two streaming calls — one per iteration
+        assert len(fake_agent.calls) == 2
+        # Both per-iteration calls carry tools= (only iteration-cap forced final
+        # and the empty-turn fallback omit tools).
+        assert fake_agent.calls[0].get("tools") is not None
+        assert fake_agent.calls[1].get("tools") is not None
 
         # Persisted assistant message captures content + citations + tool_calls
         async with AsyncSessionLocal() as session:
@@ -284,14 +302,17 @@ async def test_happy_path_tool_call_then_answer(
 async def test_iteration_cap_forces_final_answer_and_marks_truncated(
     async_client: httpx.AsyncClient,
     fake_rag: FakeRag,
-    fake_agent: FakeAgentOllama,
+    fake_agent: FakeAgentStream,
 ) -> None:
     """If the model keeps calling tools, after 5 iterations we force a final
     streamed answer and persist truncated=True."""
     fake_rag.hits = [_hit("X", None, "x text")]
-    # 5 tool calls in a row, no final answer
-    fake_agent.nonstream_responses = [_model_tool_call(f"q{i}") for i in range(5)]
-    fake_agent.stream_chunks = ["sorry, ", "I had to give up"]
+    fake_agent.turn_scripts = (
+        # 5 iterations of tool-call-only turns
+        [[_tool_call_chunk(f"q{i}")] for i in range(5)]
+        # 6th call is the forced-final (tools omitted)
+        + [[{"content": "sorry, "}, {"content": "I had to give up"}]]
+    )
 
     project_id, chat_id = await _make_rag_chat(async_client)
     try:
@@ -304,8 +325,10 @@ async def test_iteration_cap_forces_final_answer_and_marks_truncated(
         done = [f for f in frames if f["type"] == "done"]
         assert done and done[0]["truncated"] is True
 
-        # The forced final call was a stream call
-        assert len(fake_agent.stream_calls) == 1
+        # 5 per-iteration calls + 1 forced-final call
+        assert len(fake_agent.calls) == 6
+        # Iteration-cap forced final omits tools= entirely
+        assert "tools" not in fake_agent.calls[-1]
 
         async with AsyncSessionLocal() as session:
             assistant = (
@@ -327,44 +350,42 @@ async def test_iteration_cap_forces_final_answer_and_marks_truncated(
 
 
 @pytest.mark.asyncio
-async def test_malformed_tool_args_surface_error_and_feed_back_to_model(
+async def test_malformed_tool_args_suppress_call_and_feed_back_to_model(
     async_client: httpx.AsyncClient,
     fake_rag: FakeRag,
-    fake_agent: FakeAgentOllama,
+    fake_agent: FakeAgentStream,
 ) -> None:
-    """Model passes null query → tool emits an ok:false frame, error is fed
-    back as a tool message so the model can self-correct on iteration 2."""
+    """Model emits an empty-query tool_call → agent suppresses it (no
+    tool_call/tool_result frames flash in the UI) but feeds the error back
+    as a tool message so the model can self-correct on iteration 2. The
+    audit log records both the suppressed attempt and the successful one."""
     fake_rag.hits = [_hit("Recovered", None, "ok now")]
-    bad_call = {
-        "message": {
-            "role": "assistant",
-            "content": "",
-            "tool_calls": [
-                {"function": {"name": "search_wikipedia", "arguments": {"query": None}}},
-            ],
-        },
-        "done": True,
-    }
-    fake_agent.nonstream_responses = [
-        bad_call,
-        _model_tool_call("recovery"),
-        _model_final("I figured it out: ok now."),
+    fake_agent.turn_scripts = [
+        # Turn 1: malformed tool_call (null query) — should be suppressed
+        [_tool_call_chunk(None)],
+        # Turn 2: corrected tool_call — should dispatch normally
+        [_tool_call_chunk("recovery")],
+        # Turn 3: final answer (no tool_calls)
+        [{"content": "I figured it out: ok now."}],
     ]
 
     project_id, chat_id = await _make_rag_chat(async_client)
     try:
-        status, frames = await _read_agent_stream(async_client, chat_id, "test recovery")
+        status, frames = await _read_agent_stream(
+            async_client, chat_id, "test recovery"
+        )
         assert status == 200, frames
 
+        # Only the successful call's frames make it to the UI.
+        tool_calls = [f for f in frames if f["type"] == "tool_call"]
         results = [f for f in frames if f["type"] == "tool_result"]
-        assert len(results) == 2
-        assert results[0]["ok"] is False
-        assert "query" in results[0]["error"].lower()
-        assert results[1]["ok"] is True
+        assert len(tool_calls) == 1
+        assert len(results) == 1
+        assert results[0]["ok"] is True
 
-        # The second non-stream call's messages must include a tool message
+        # The second iteration's stream call must include a tool message
         # carrying the error (so the model could "see" what went wrong).
-        second_call_messages = fake_agent.nonstream_calls[1]["messages"]
+        second_call_messages = fake_agent.calls[1]["messages"]
         assert any(
             m["role"] == "tool" and "tool error" in m["content"].lower()
             for m in second_call_messages
@@ -382,8 +403,12 @@ async def test_malformed_tool_args_surface_error_and_feed_back_to_model(
                 .scalars()
                 .one()
             )
-        # Both attempts logged on the message
+        # Audit log records both attempts: the first marked suppressed,
+        # the second successful.
         assert len(assistant.tool_calls) == 2
+        assert assistant.tool_calls[0]["ok"] is False
+        assert assistant.tool_calls[0].get("suppressed") is True
+        assert assistant.tool_calls[1]["ok"] is True
     finally:
         await async_client.delete(f"/api/v1/projects/{project_id}")
 
@@ -392,7 +417,7 @@ async def test_malformed_tool_args_surface_error_and_feed_back_to_model(
 async def test_rag_get_info_failure_emits_error_frame_and_skips_loop(
     async_client: httpx.AsyncClient,
     fake_rag: FakeRag,
-    fake_agent: FakeAgentOllama,
+    fake_agent: FakeAgentStream,
 ) -> None:
     """If /rag/info fails up front, the agent never enters the loop."""
     fake_rag.info_error = RagConnectionError("http://rag.local:8001", "refused")
@@ -404,8 +429,7 @@ async def test_rag_get_info_failure_emits_error_frame_and_skips_loop(
         assert any(f["type"] == "error" for f in frames)
 
         # Ollama was never called
-        assert len(fake_agent.nonstream_calls) == 0
-        assert len(fake_agent.stream_calls) == 0
+        assert len(fake_agent.calls) == 0
 
         # The user message must still have been persisted (parity with /stream)
         async with AsyncSessionLocal() as session:
@@ -429,12 +453,10 @@ async def test_rag_get_info_failure_emits_error_frame_and_skips_loop(
 async def test_400_when_project_lacks_rag_config(
     async_client: httpx.AsyncClient,
     fake_rag: FakeRag,
-    fake_agent: FakeAgentOllama,
+    fake_agent: FakeAgentStream,
 ) -> None:
     """Agent endpoint requires the project to have full RAG config."""
-    project_id, chat_id = await _make_rag_chat(
-        async_client, rag_enabled=False
-    )
+    project_id, chat_id = await _make_rag_chat(async_client, rag_enabled=False)
     try:
         r = await async_client.post(
             f"/api/v1/chats/{chat_id}/agent",
@@ -442,7 +464,7 @@ async def test_400_when_project_lacks_rag_config(
         )
         assert r.status_code == 400
         assert "RAG" in r.json()["detail"]
-        assert len(fake_agent.nonstream_calls) == 0
+        assert len(fake_agent.calls) == 0
     finally:
         await async_client.delete(f"/api/v1/projects/{project_id}")
 
@@ -451,7 +473,7 @@ async def test_400_when_project_lacks_rag_config(
 async def test_404_when_chat_does_not_exist(
     async_client: httpx.AsyncClient,
     fake_rag: FakeRag,
-    fake_agent: FakeAgentOllama,
+    fake_agent: FakeAgentStream,
 ) -> None:
     """Bogus chat id → 404 before streaming starts."""
     bogus = uuid4()
@@ -466,10 +488,10 @@ async def test_404_when_chat_does_not_exist(
 async def test_user_message_persists_when_ollama_fails_mid_loop(
     async_client: httpx.AsyncClient,
     fake_rag: FakeRag,
-    fake_agent: FakeAgentOllama,
+    fake_agent: FakeAgentStream,
 ) -> None:
     """An Ollama failure inside the loop leaves the user message intact."""
-    fake_agent.nonstream_error = RuntimeError("ollama exploded")
+    fake_agent.error = RuntimeError("ollama exploded")
 
     project_id, chat_id = await _make_rag_chat(async_client)
     try:
@@ -491,5 +513,106 @@ async def test_user_message_persists_when_ollama_fails_mid_loop(
             )
         assert len(user_msgs) == 1
         assert user_msgs[0].content == "hi"
+    finally:
+        await async_client.delete(f"/api/v1/projects/{project_id}")
+
+
+@pytest.mark.asyncio
+async def test_empty_turn_triggers_tool_free_fallback(
+    async_client: httpx.AsyncClient,
+    fake_rag: FakeRag,
+    fake_agent: FakeAgentStream,
+) -> None:
+    """Model emits empty content + no tool_calls in iteration 1. The agent
+    should fire a tool-free fallback streaming call (preserving the prior
+    code's safety net for tool-aware models that emit empty turns when given
+    tools) and use its output as the answer."""
+    fake_agent.turn_scripts = [
+        [],  # Iteration 1: completely empty stream (no content, no tool_calls)
+        [{"content": "Sure — here's a direct answer."}],  # Fallback (no tools=)
+    ]
+
+    project_id, chat_id = await _make_rag_chat(async_client)
+    try:
+        status, frames = await _read_agent_stream(async_client, chat_id, "hi")
+        assert status == 200
+
+        # Two calls: the empty iteration + the tool-free fallback
+        assert len(fake_agent.calls) == 2
+        # First call has tools= (per-iteration default)
+        assert fake_agent.calls[0].get("tools") is not None
+        # Fallback call has tools= omitted
+        assert "tools" not in fake_agent.calls[1]
+
+        # Final answer made it to NDJSON + persisted
+        types = [f["type"] for f in frames]
+        assert "chunk" in types
+        assert types[-1] == "done"
+        assert frames[-1]["truncated"] is False
+
+        async with AsyncSessionLocal() as session:
+            assistant = (
+                (
+                    await session.execute(
+                        select(Message).where(
+                            Message.chat_id == chat_id, Message.role == "assistant"
+                        )
+                    )
+                )
+                .scalars()
+                .one()
+            )
+        assert "direct answer" in assistant.content
+    finally:
+        await async_client.delete(f"/api/v1/projects/{project_id}")
+
+
+@pytest.mark.asyncio
+async def test_streams_content_then_tool_call_in_same_turn(
+    async_client: httpx.AsyncClient,
+    fake_rag: FakeRag,
+    fake_agent: FakeAgentStream,
+) -> None:
+    """Single streaming turn can emit reasoning chunks AND a tool_call.
+    Verifies frame ordering: chunks first, then tool_call/tool_result, then
+    next-turn chunks."""
+    fake_rag.hits = [_hit("X", None, "x text")]
+    fake_agent.turn_scripts = [
+        [
+            {"content": "Let me look "},
+            {"content": "this up."},
+            _tool_call_chunk("x"),
+        ],
+        [{"content": "The answer is x."}],
+    ]
+
+    project_id, chat_id = await _make_rag_chat(async_client)
+    try:
+        status, frames = await _read_agent_stream(async_client, chat_id, "what is x?")
+        assert status == 200
+
+        types = [f["type"] for f in frames]
+        first_tool_call_idx = types.index("tool_call")
+        # At least the two "Let me look this up." chunks come before the tool_call
+        assert types[:first_tool_call_idx].count("chunk") >= 2
+        # And the final-answer chunk arrives after the tool_result
+        first_tool_result_idx = types.index("tool_result")
+        assert any(t == "chunk" for t in types[first_tool_result_idx + 1 :])
+
+        async with AsyncSessionLocal() as session:
+            assistant = (
+                (
+                    await session.execute(
+                        select(Message).where(
+                            Message.chat_id == chat_id, Message.role == "assistant"
+                        )
+                    )
+                )
+                .scalars()
+                .one()
+            )
+        assert "Let me look this up." in assistant.content
+        assert "The answer is x." in assistant.content
+        assert len(assistant.tool_calls) == 1
     finally:
         await async_client.delete(f"/api/v1/projects/{project_id}")

@@ -1,20 +1,19 @@
 """
-Agent service: drives an autonomous tool-calling loop against Ollama.
+Agent service: drives a tool-calling loop against Ollama using one streaming
+call per iteration.
 
-The loop strategy ("Option B" in the design doc):
-
+Loop:
   while iterations < cap:
-      call Ollama with stream=False and tools=[search_wikipedia]
-      if the model returns no tool_calls:
-          re-call once with stream=True, tools=None  ->  typewriter UX on final
-          break
+      stream a chat call with tools=[search_wikipedia]
+      accumulate emitted content chunks + any tool_calls
+      if no tool_calls were emitted:
+          if no content was emitted either:
+              fire one tool-free streaming fallback (safety net for tool-aware
+              models that emit empty turns when given tools)
+          the streamed content (this turn or fallback) IS the final answer -> done
       else:
-          run each tool, append result, continue
-
-Why call Ollama directly via httpx rather than through the pinned `ollama==0.1.6`
-Python client: that client predates the `tools=` parameter. Bumping the package
-would touch the existing OllamaService.stream_chat path; talking to /api/chat
-directly keeps the regular streaming flow untouched.
+          dispatch each tool, append result to messages, continue
+  on iteration cap: force one more streaming call with tools omitted
 
 Tools available in v1: `search_wikipedia` only — a thin wrapper over the existing
 RagService. The model picks its own query and may invoke the tool repeatedly to
@@ -37,11 +36,11 @@ from typing import (
     Tuple,
 )
 
-import httpx
+from ollama import ResponseError
 
-from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models import Project
+from app.services.ollama_service import ollama_service
 from app.services.rag_service import rag_service
 from app.services.rag_utils import dedupe_hits_by_page, format_rag_context
 
@@ -81,11 +80,16 @@ SEARCH_WIKIPEDIA_TOOL: Dict[str, Any] = {
 
 AGENT_SYSTEM_PROMPT = (
     "You are an assistant with access to a `search_wikipedia` tool that queries "
-    "a local Wikipedia knowledge base. Use the tool for factual questions, but "
-    "answer directly without searching for conversational, opinion-based, or "
-    "self-referential questions. When you do search, cite sources inline by "
-    "their bracketed title (e.g. `[French Revolution § Causes]`). You may make "
-    "at most a few search calls per turn — be efficient."
+    "a local Wikipedia knowledge base.\n\n"
+    "When NOT to call the tool: greetings, thanks, acknowledgements, small talk, "
+    "opinions, clarifying questions, or any message that doesn't name a specific "
+    "factual topic to look up. Answer those directly without invoking any tool.\n\n"
+    "When to call the tool: the user asks about a specific person, place, event, "
+    "concept, or fact you may not know. The query must be a substantive non-empty "
+    "string focused on key entities — never call the tool with an empty query.\n\n"
+    "When you do search, cite sources inline by their bracketed title "
+    "(e.g. `[French Revolution § Causes]`). At most a few search calls per turn — "
+    "be efficient."
 )
 
 
@@ -117,82 +121,6 @@ class AgentRunResult:
     tool_calls_audit: List[Dict[str, Any]] = field(default_factory=list)
     truncated: bool = False
     error: Optional[str] = None
-
-
-# ----- Ollama HTTP client (bypassing the pinned 0.1.6 python client) ----------
-
-
-async def _ollama_chat_nonstream(
-    model: str,
-    messages: List[Dict[str, Any]],
-    tools: Optional[List[Dict[str, Any]]],
-    options: Optional[Dict[str, Any]],
-    timeout: float = 120.0,
-) -> Dict[str, Any]:
-    """POST /api/chat with stream=False and return the parsed JSON response."""
-    body: Dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-    }
-    if tools:
-        body["tools"] = tools
-    if options:
-        body["options"] = options
-
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(
-            f"{settings.ollama_base_url.rstrip('/')}/api/chat",
-            json=body,
-        )
-        response.raise_for_status()
-        return response.json()
-
-
-async def _ollama_chat_stream(
-    model: str,
-    messages: List[Dict[str, Any]],
-    options: Optional[Dict[str, Any]],
-    timeout: float = 300.0,
-) -> AsyncGenerator[str, None]:
-    """POST /api/chat with stream=True, yielding `message.content` chunks.
-
-    Used only for the final-answer pass once the model is done calling tools.
-    Tools are intentionally NOT passed here — at this point we want the model
-    to produce prose, not another tool call.
-    """
-    body: Dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "stream": True,
-    }
-    if options:
-        body["options"] = options
-
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        async with client.stream(
-            "POST",
-            f"{settings.ollama_base_url.rstrip('/')}/api/chat",
-            json=body,
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning(
-                        "Skipping malformed Ollama stream line: %s", line[:80]
-                    )
-                    continue
-                msg = data.get("message", {})
-                content = msg.get("content", "")
-                if content:
-                    yield content
-                if data.get("done"):
-                    return
 
 
 # ----- Tool dispatch ----------------------------------------------------------
@@ -252,6 +180,23 @@ TOOLS: Dict[str, Callable[..., Awaitable[Tuple[str, List[Dict[str, Any]], bool]]
 }
 
 
+def _prevalidate_tool_call(tool_name: str, tool_input: Dict[str, Any]) -> Optional[str]:
+    """Return a human-readable reason to suppress this tool_call, or None.
+
+    Catches obviously degenerate calls (e.g. empty-query search) so we don't
+    flash a useless tool_call frame in the UI. The model still receives the
+    error back through a tool message and can self-correct.
+    """
+    if tool_name == "search_wikipedia":
+        query = tool_input.get("query")
+        if not isinstance(query, str) or not query.strip():
+            return (
+                "Empty or missing 'query' — do not call search_wikipedia for "
+                "conversational input, greetings, or small talk. Answer directly."
+            )
+    return None
+
+
 # ----- Agent loop -------------------------------------------------------------
 
 
@@ -288,6 +233,29 @@ def _build_citations(
             for h in final
         ],
     }
+
+
+def _parse_tool_call(tc: Any) -> Optional[Dict[str, Any]]:
+    """Normalize one ollama-python ToolCall into the loop's dict shape.
+
+    Returns None if the call has no function payload. `arguments` may arrive
+    as Mapping (current client), str (older / future fallback), or None.
+    """
+    fn = getattr(tc, "function", None)
+    if fn is None:
+        return None
+    name = getattr(fn, "name", "") or ""
+    raw_args = getattr(fn, "arguments", None)
+    if isinstance(raw_args, str):
+        try:
+            parsed: Dict[str, Any] = json.loads(raw_args)
+        except json.JSONDecodeError:
+            parsed = {}
+    elif raw_args is None:
+        parsed = {}
+    else:
+        parsed = dict(raw_args)
+    return {"function": {"name": name, "arguments": parsed}}
 
 
 async def run_agent(
@@ -352,16 +320,50 @@ async def run_agent(
             _commit_citations()
             return
 
-        # Tool-call detection pass: stream=False so we can inspect tool_calls.
+        # ONE streaming call per iteration. May yield content chunks and/or
+        # tool_calls in the same stream (tool_calls typically arrive in the
+        # final chunks before done=True, but we accept any ordering).
+        turn_content_parts: List[str] = []
+        turn_tool_calls: List[Dict[str, Any]] = []
+        disconnected_mid_turn = False
+
         try:
-            response = await _ollama_chat_nonstream(
+            stream = await ollama_service.client.chat(
                 model=model,
                 messages=messages,
                 tools=[SEARCH_WIKIPEDIA_TOOL],
                 options=agent_options,
+                stream=True,
             )
-        except httpx.HTTPStatusError as e:
-            err = f"Ollama returned {e.response.status_code}: {e.response.text[:200]}"
+            async for chunk in stream:
+                if await is_disconnected():
+                    disconnected_mid_turn = True
+                    result.truncated = True
+                    break
+
+                msg = getattr(chunk, "message", None)
+                if msg is None:
+                    continue
+
+                content = getattr(msg, "content", "") or ""
+                if content:
+                    yield {"type": "chunk", "content": content}
+                    accumulated_text.append(content)
+                    turn_content_parts.append(content)
+                    # Keep result.final_content current on every chunk so the
+                    # endpoint's `finally` can persist whatever streamed so far
+                    # even if cancellation fires before normal exit points.
+                    result.final_content = "".join(accumulated_text)
+
+                for tc in getattr(msg, "tool_calls", None) or []:
+                    parsed = _parse_tool_call(tc)
+                    if parsed is not None:
+                        turn_tool_calls.append(parsed)
+        except ResponseError as e:
+            # Preserve today's HTTP-status granularity (was httpx.HTTPStatusError).
+            status_code = getattr(e, "status_code", "?")
+            body = str(getattr(e, "error", e))[:200]
+            err = f"Ollama returned {status_code}: {body}"
             logger.error("Agent loop iteration %d: %s", iter_idx, err)
             result.error = err
             result.final_content = "".join(accumulated_text)
@@ -377,69 +379,89 @@ async def run_agent(
             yield {"type": "error", "message": err}
             return
 
-        msg = response.get("message", {}) or {}
-        msg_content = msg.get("content", "") or ""
-        tool_calls = msg.get("tool_calls", []) or []
+        if disconnected_mid_turn:
+            # Don't dispatch any partial tool_calls and don't start another
+            # iteration — the client is gone.
+            result.final_content = "".join(accumulated_text)
+            _commit_citations()
+            return
 
-        # Some models emit reasoning text alongside tool_calls. Surface it.
-        if msg_content:
-            yield {"type": "chunk", "content": msg_content}
-            accumulated_text.append(msg_content)
-
-        if not tool_calls:
-            # Model is done with tools. If it returned content above, that IS
-            # the final answer (already streamed as a chunk). If it returned
-            # nothing, force a final streaming call with no tools.
-            if not msg_content:
+        if not turn_tool_calls:
+            # If the model emitted NEITHER tool_calls NOR content this turn,
+            # fall back to one tool-free streaming call. Some tool-aware models
+            # emit an empty turn when given tools but answer normally when
+            # tools are absent — this preserves the prior code's safety net.
+            if not turn_content_parts:
                 try:
-                    async for piece in _ollama_chat_stream(
+                    fallback_stream = await ollama_service.client.chat(
                         model=model,
                         messages=messages,
-                        options=agent_options,
-                    ):
+                        options=agent_options,  # no tools= -> prose only
+                        stream=True,
+                    )
+                    async for chunk in fallback_stream:
                         if await is_disconnected():
                             result.truncated = True
                             break
-                        yield {"type": "chunk", "content": piece}
-                        accumulated_text.append(piece)
+                        msg = getattr(chunk, "message", None)
+                        content = getattr(msg, "content", "") if msg else ""
+                        if content:
+                            yield {"type": "chunk", "content": content}
+                            accumulated_text.append(content)
+                            result.final_content = "".join(accumulated_text)
                 except Exception as e:
-                    err = f"Final answer generation failed: {e}"
+                    err = f"Empty-turn fallback failed: {e}"
                     logger.error(err)
                     result.error = err
                     result.final_content = "".join(accumulated_text)
                     _commit_citations()
                     yield {"type": "error", "message": err}
                     return
+
             result.final_content = "".join(accumulated_text)
             _commit_citations()
             yield {"type": "done", "truncated": result.truncated}
             return
 
         # Record the assistant's tool-calling turn in the conversation so the
-        # next iteration sees it. Ollama expects this shape on subsequent calls.
+        # next iteration sees it.
         messages.append(
             {
                 "role": "assistant",
-                "content": msg_content,
-                "tool_calls": tool_calls,
+                "content": "".join(turn_content_parts),
+                "tool_calls": turn_tool_calls,
             }
         )
 
-        for tc in tool_calls:
+        for tc in turn_tool_calls:
             tc_id = uuid_lib.uuid4().hex[:12]
             fn = tc.get("function", {}) or {}
             tool_name = fn.get("name", "") or ""
-            # Ollama returns arguments already parsed as a dict (unlike OpenAI's
-            # JSON-string convention) — but be defensive in case a future Ollama
-            # version changes this.
-            raw_args = fn.get("arguments", {})
-            if isinstance(raw_args, str):
-                try:
-                    tool_input: Dict[str, Any] = json.loads(raw_args)
-                except json.JSONDecodeError:
-                    tool_input = {}
-            else:
-                tool_input = raw_args or {}
+            tool_input: Dict[str, Any] = fn.get("arguments", {}) or {}
+
+            # Pre-dispatch validation: silently reject obviously degenerate
+            # calls (e.g. empty-query search) without emitting a tool_call
+            # frame to the UI. The model still gets a tool message back so it
+            # can self-correct on the next iteration.
+            skip_reason = _prevalidate_tool_call(tool_name, tool_input)
+            if skip_reason is not None:
+                logger.info(
+                    "Suppressed degenerate tool_call (%s): %s", tool_name, skip_reason
+                )
+                result.tool_calls_audit.append(
+                    {
+                        "id": tc_id,
+                        "name": tool_name,
+                        "input": tool_input,
+                        "ok": False,
+                        "error": skip_reason,
+                        "suppressed": True,
+                    }
+                )
+                messages.append(
+                    {"role": "tool", "content": f"Tool error: {skip_reason}"}
+                )
+                continue
 
             yield {
                 "type": "tool_call",
@@ -514,15 +536,21 @@ async def run_agent(
     logger.info("Agent loop hit iteration cap (%d); forcing final answer", max_iters)
     result.truncated = True
     try:
-        async for piece in _ollama_chat_stream(
+        stream = await ollama_service.client.chat(
             model=model,
             messages=messages,
-            options=agent_options,
-        ):
+            options=agent_options,  # no tools= -> prose only
+            stream=True,
+        )
+        async for chunk in stream:
             if await is_disconnected():
                 break
-            yield {"type": "chunk", "content": piece}
-            accumulated_text.append(piece)
+            msg = getattr(chunk, "message", None)
+            content = getattr(msg, "content", "") if msg else ""
+            if content:
+                yield {"type": "chunk", "content": content}
+                accumulated_text.append(content)
+                result.final_content = "".join(accumulated_text)
     except Exception as e:
         err = f"Forced-final-answer generation failed: {e}"
         logger.error(err)
