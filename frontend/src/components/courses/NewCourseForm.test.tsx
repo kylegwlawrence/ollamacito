@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NewCourseForm } from './NewCourseForm'
 import { useCourseStore } from '@/stores/courseStore'
-import { useProjectsStore } from '@/stores/projectsStore'
+import { useRagServersStore } from '@/stores/ragServersStore'
 import { useToastStore } from '@/stores/toastStore'
 
 const navigateMock = vi.fn()
@@ -19,28 +19,20 @@ vi.mock('react-router-dom', async () => {
   }
 })
 
-const buildProject = (overrides: Partial<{
-  id: string
-  name: string
-  rag_enabled: boolean
-  rag_server_id: string | null
-}> = {}) => ({
-  id: 'p1',
-  name: 'Project One',
-  custom_instructions: null,
-  is_archived: false,
-  default_model: null,
-  temperature: null,
-  max_tokens: null,
-  auto_attach_all_files: false,
-  memory: null,
-  rag_enabled: true,
-  rag_server_id: 'rs1',
-  rag_top_k: 5,
+const buildRagServer = (
+  overrides: Partial<{
+    id: string
+    name: string
+    url: string
+    corpus_id: string
+  }> = {}
+) => ({
+  id: 'rs1',
+  name: 'Simple Wiki',
+  url: 'http://rag.local:8001',
+  corpus_id: 'simplewiki',
   created_at: '',
   updated_at: '',
-  chat_count: 0,
-  file_count: 0,
   ...overrides,
 })
 
@@ -60,13 +52,12 @@ describe('NewCourseForm', () => {
     })
   })
 
-  it('shows a helpful empty state when no RAG-configured projects exist', () => {
-    useProjectsStore.setState({
-      projects: [buildProject({ rag_enabled: false, rag_server_id: null })],
+  it('shows a helpful empty state when no RAG servers exist', () => {
+    useRagServersStore.setState({
+      servers: [],
       loading: false,
       loaded: true,
       error: null,
-      currentProject: null,
     })
     render(
       <MemoryRouter>
@@ -74,17 +65,20 @@ describe('NewCourseForm', () => {
       </MemoryRouter>
     )
     expect(
-      screen.getByText(/No projects with RAG configured/)
+      screen.getByText(/No RAG servers configured/)
+    ).toBeInTheDocument()
+    // The CTA button is rendered too.
+    expect(
+      screen.getByRole('button', { name: /Manage RAG servers/ })
     ).toBeInTheDocument()
   })
 
   it('disables submit when topic is empty or invalid', async () => {
-    useProjectsStore.setState({
-      projects: [buildProject()],
+    useRagServersStore.setState({
+      servers: [buildRagServer()],
       loading: false,
       loaded: true,
       error: null,
-      currentProject: null,
     })
     render(
       <MemoryRouter>
@@ -92,7 +86,7 @@ describe('NewCourseForm', () => {
       </MemoryRouter>
     )
     const submit = screen.getByRole('button', { name: /Create course/ })
-    // Submit is disabled because no project picked yet AND topic is empty
+    // Submit is disabled because no RAG server picked yet AND topic is empty
     expect(submit).toBeDisabled()
   })
 
@@ -101,7 +95,8 @@ describe('NewCourseForm', () => {
     const createCourseMock = vi.fn(async () => ({
       id: 'c-new',
       user_id: 'u',
-      project_id: 'p1',
+      rag_server_id: 'rs1',
+      rag_top_k: 5,
       title: 'Photosynthesis',
       status: 'pending' as const,
       input: {
@@ -129,12 +124,11 @@ describe('NewCourseForm', () => {
       error: null,
       createCourse: createCourseMock,
     } as Partial<ReturnType<typeof useCourseStore.getState>> as never)
-    useProjectsStore.setState({
-      projects: [buildProject()],
+    useRagServersStore.setState({
+      servers: [buildRagServer()],
       loading: false,
       loaded: true,
       error: null,
-      currentProject: null,
     })
 
     render(
@@ -143,12 +137,14 @@ describe('NewCourseForm', () => {
       </MemoryRouter>
     )
 
-    // Pick project
-    const projectSelect = screen.getByRole('button', {
-      name: /Choose a project/,
+    // Pick RAG server
+    const ragSelect = screen.getByRole('button', {
+      name: /Choose a RAG server/,
     })
-    await user.click(projectSelect)
-    await user.click(screen.getByRole('option', { name: 'Project One' }))
+    await user.click(ragSelect)
+    await user.click(
+      screen.getByRole('option', { name: 'Simple Wiki (simplewiki)' })
+    )
 
     // Topic
     await user.type(screen.getByLabelText('Topic'), 'Photosynthesis')
@@ -161,7 +157,8 @@ describe('NewCourseForm', () => {
     expect(createCourseMock).toHaveBeenCalledTimes(1)
     expect(createCourseMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        project_id: 'p1',
+        rag_server_id: 'rs1',
+        rag_top_k: 5,
         input: expect.objectContaining({ topic: 'Photosynthesis' }),
       })
     )
@@ -171,13 +168,12 @@ describe('NewCourseForm', () => {
     })
   })
 
-  it('rejects hours_max < hours_min', async () => {
-    useProjectsStore.setState({
-      projects: [buildProject()],
+  it('rejects hours_max < hours_min', () => {
+    useRagServersStore.setState({
+      servers: [buildRagServer()],
       loading: false,
       loaded: true,
       error: null,
-      currentProject: null,
     })
     render(
       <MemoryRouter>
@@ -189,19 +185,36 @@ describe('NewCourseForm', () => {
     fireEvent.change(hmin, { target: { value: '10' } })
     fireEvent.change(hmax, { target: { value: '5' } })
 
-    // The Create button is disabled when validationError() returns non-null
+    const submit = screen.getByRole('button', { name: /Create course/ })
+    expect(submit).toBeDisabled()
+  })
+
+  it('rejects top_k out of range', () => {
+    useRagServersStore.setState({
+      servers: [buildRagServer()],
+      loading: false,
+      loaded: true,
+      error: null,
+    })
+    render(
+      <MemoryRouter>
+        <NewCourseForm />
+      </MemoryRouter>
+    )
+    const topK = screen.getByLabelText('Retrieval top_k')
+    fireEvent.change(topK, { target: { value: '100' } })
+
     const submit = screen.getByRole('button', { name: /Create course/ })
     expect(submit).toBeDisabled()
   })
 
   it('toggles resource chips on click', async () => {
     const user = userEvent.setup()
-    useProjectsStore.setState({
-      projects: [buildProject()],
+    useRagServersStore.setState({
+      servers: [buildRagServer()],
       loading: false,
       loaded: true,
       error: null,
-      currentProject: null,
     })
     render(
       <MemoryRouter>
