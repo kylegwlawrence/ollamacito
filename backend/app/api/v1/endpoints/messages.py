@@ -801,7 +801,8 @@ async def stream_agent_response(
                     model=model_name,
                     initial_messages=ollama_messages,
                     options=options,
-                    project=project,
+                    rag_server=project.rag_server,
+                    rag_top_k=project.rag_top_k or 5,
                     result=result,
                     is_disconnected=request.is_disconnected,
                 ):

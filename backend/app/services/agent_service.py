@@ -39,7 +39,7 @@ from typing import (
 from ollama import ResponseError
 
 from app.core.logging import get_logger
-from app.db.models import Project
+from app.db.models import RagServer
 from app.services.ollama_service import ollama_service
 from app.services.rag_service import rag_service
 from app.services.rag_utils import dedupe_hits_by_page, format_rag_context
@@ -128,7 +128,8 @@ class AgentRunResult:
 
 async def _execute_search_wikipedia(
     args: Dict[str, Any],
-    project: Project,
+    rag_server: RagServer,
+    rag_top_k: int,
 ) -> Tuple[str, List[Dict[str, Any]], bool]:
     """
     Execute one search_wikipedia call.
@@ -144,18 +145,15 @@ async def _execute_search_wikipedia(
             "Missing or empty 'query' argument (expected a non-empty string)."
         )
 
-    capped_top_k = min(_TOOL_TOP_K_CAP, project.rag_top_k or _TOOL_TOP_K_CAP)
+    capped_top_k = min(_TOOL_TOP_K_CAP, rag_top_k or _TOOL_TOP_K_CAP)
 
-    server = project.rag_server
-    if server is None:
-        raise ValueError(
-            "Project has no RAG server configured (rag_server relationship is None)."
-        )
+    if rag_server is None:
+        raise ValueError("No RAG server provided to the agent loop.")
 
     raw = await rag_service.retrieve(
-        base_url=server.url,
+        base_url=rag_server.url,
         query=query.strip(),
-        corpus=server.corpus_id,
+        corpus=rag_server.corpus_id,
         top_k=capped_top_k,
     )
     raw_hits = raw.get("hits", []) or []
@@ -164,7 +162,7 @@ async def _execute_search_wikipedia(
 
     tool_text = format_rag_context(
         {
-            "corpus": server.corpus_id,
+            "corpus": rag_server.corpus_id,
             "hits": deduped,
         }
     )
@@ -174,7 +172,7 @@ async def _execute_search_wikipedia(
     return tool_text, deduped, used_dense
 
 
-# name -> (args, project) -> (tool_text, hits, used_dense)
+# name -> (args, rag_server, rag_top_k) -> (tool_text, hits, used_dense)
 TOOLS: Dict[str, Callable[..., Awaitable[Tuple[str, List[Dict[str, Any]], bool]]]] = {
     "search_wikipedia": _execute_search_wikipedia,
 }
@@ -262,7 +260,8 @@ async def run_agent(
     model: str,
     initial_messages: List[Dict[str, Any]],
     options: Optional[Dict[str, Any]],
-    project: Project,
+    rag_server: RagServer,
+    rag_top_k: int,
     result: AgentRunResult,
     is_disconnected: Callable[[], Awaitable[bool]],
     max_iters: int = 5,
@@ -278,17 +277,20 @@ async def run_agent(
     Pass `system_prompt` to replace the default chat-agent directive (used by
     the course-generator pipeline to instruct the model to gather research
     notes instead of answering a chat turn).
+
+    `rag_server` + `rag_top_k` are passed directly rather than through a
+    Project wrapper so both the chat agent (project-scoped) and the course
+    generator (standalone) can share this loop.
     """
     # Pre-flight: fetch /rag/info to get article_url_template for citations.
-    server = project.rag_server
-    if server is None:
-        msg = "Project has no RAG server configured."
+    if rag_server is None:
+        msg = "No RAG server provided to the agent loop."
         logger.error(msg)
         result.error = msg
         yield {"type": "error", "message": msg}
         return
     try:
-        info = await rag_service.get_info(server.url)
+        info = await rag_service.get_info(rag_server.url)
     except Exception as e:
         msg = f"RAG server unavailable: {e}"
         logger.error(msg)
@@ -312,8 +314,8 @@ async def run_agent(
 
     def _commit_citations() -> None:
         result.rag_citations = _build_citations(
-            server_base_url=server.url,
-            corpus=server.corpus_id,
+            server_base_url=rag_server.url,
+            corpus=rag_server.corpus_id,
             article_url_template=article_url_template,
             aggregated_hits=aggregated_hits,
             used_dense_any=used_dense_any,
@@ -499,7 +501,9 @@ async def run_agent(
                 continue
 
             try:
-                tool_text, new_hits, used_dense = await handler(tool_input, project)
+                tool_text, new_hits, used_dense = await handler(
+                    tool_input, rag_server, rag_top_k
+                )
                 aggregated_hits.extend(new_hits)
                 used_dense_any = used_dense_any or used_dense
                 summary = f"{len(new_hits)} result{'s' if len(new_hits) != 1 else ''}"
