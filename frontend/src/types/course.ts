@@ -154,7 +154,8 @@ export interface ValidationErrorEntry {
 export interface Course {
   id: string
   user_id: string
-  project_id: string
+  rag_server_id: string
+  rag_top_k: number
   title: string
   status: CourseStatus
   input: CourseGenerationRequest
@@ -169,7 +170,8 @@ export interface Course {
 export interface CourseListItem {
   id: string
   title: string
-  project_id: string
+  rag_server_id: string
+  rag_top_k: number
   status: CourseStatus
   total_hours: number | null
   topic: string
@@ -179,12 +181,15 @@ export interface CourseListItem {
 }
 
 export interface CourseCreate {
-  project_id: string
+  rag_server_id: string
+  rag_top_k: number
   input: CourseGenerationRequest
 }
 
 export interface CourseUpdate {
   title?: string
+  rag_server_id?: string
+  rag_top_k?: number
 }
 
 export interface CourseRegenerateRequest {

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCourseStore } from '@/stores/courseStore'
-import { useProjectsStore } from '@/stores/projectsStore'
+import { useRagServersStore } from '@/stores/ragServersStore'
 import { useToastStore } from '@/stores/toastStore'
 import { Button } from '../common/Button'
 import { Select } from '../common/Select'
@@ -38,7 +38,10 @@ const mismatchedAudienceWarning = (
   if (universityLevels.includes(age) && target === 'novice') {
     return 'A university audience aiming for "novice" mastery is unusual — verify this is what you want.'
   }
-  if (youngLevels.includes(age) && (target === 'proficient' || target === 'expert')) {
+  if (
+    youngLevels.includes(age) &&
+    (target === 'proficient' || target === 'expert')
+  ) {
     return 'A primary/elementary audience aiming for proficient/expert mastery is ambitious — verify this is what you want.'
   }
   return null
@@ -46,17 +49,14 @@ const mismatchedAudienceWarning = (
 
 export const NewCourseForm = () => {
   const navigate = useNavigate()
-  const projects = useProjectsStore((s) => s.projects)
-  const projectsLoading = useProjectsStore((s) => s.loading)
+  const ragServers = useRagServersStore((s) => s.servers)
+  const ragServersLoading = useRagServersStore((s) => s.loading)
+  const ragServersLoaded = useRagServersStore((s) => s.loaded)
   const createCourse = useCourseStore((s) => s.createCourse)
   const showToast = useToastStore((s) => s.showToast)
 
-  const ragReadyProjects = useMemo(
-    () => projects.filter((p) => p.rag_enabled && p.rag_server_id),
-    [projects]
-  )
-
-  const [projectId, setProjectId] = useState<string>('')
+  const [ragServerId, setRagServerId] = useState<string>('')
+  const [ragTopK, setRagTopK] = useState<string>('5')
   const [topic, setTopic] = useState('')
   const [current, setCurrent] = useState<ExpertiseLevel>('novice')
   const [target, setTarget] = useState<ExpertiseLevel>('competent')
@@ -71,7 +71,11 @@ export const NewCourseForm = () => {
   const [submitting, setSubmitting] = useState(false)
 
   const validationError = (): string | null => {
-    if (!projectId) return 'Pick a project with RAG configured.'
+    if (!ragServerId) return 'Pick a RAG server.'
+    const topK = Number(ragTopK)
+    if (!Number.isFinite(topK) || topK < 1 || topK > 50) {
+      return 'top_k must be a number between 1 and 50.'
+    }
     if (topic.trim().length < 2) return 'Topic is too short.'
     const min = Number(hoursMin)
     const max = Number(hoursMax)
@@ -103,13 +107,19 @@ export const NewCourseForm = () => {
       included_resources: Array.from(resources),
       learner_context: learnerContext.trim() || null,
     }
-    const created = await createCourse({ project_id: projectId, input })
+    const created = await createCourse({
+      rag_server_id: ragServerId,
+      rag_top_k: Number(ragTopK),
+      input,
+    })
     setSubmitting(false)
     if (created) {
       showToast('Course created. Starting generation…', 'success')
       navigate(`/courses/${created.id}`, { state: { autoStart: true } })
     } else {
-      setSubmitError('Failed to create course. Check that the project still has RAG configured.')
+      setSubmitError(
+        'Failed to create course. Check that the RAG server you picked still exists.'
+      )
     }
   }
 
@@ -117,31 +127,60 @@ export const NewCourseForm = () => {
     <>
       <ViewHeader title="New course" />
       <div className="course-form">
-        {projectsLoading ? (
-          <p>Loading projects…</p>
-        ) : ragReadyProjects.length === 0 ? (
+        {ragServersLoading && !ragServersLoaded ? (
+          <p>Loading RAG servers…</p>
+        ) : ragServers.length === 0 ? (
           <div className="course-form__error">
-            No projects with RAG configured. Open a project and configure its
-            RAG server before creating a course.
+            <p>
+              No RAG servers configured. Add one before creating a course.
+            </p>
+            <Button
+              onClick={() => navigate('/rag-servers')}
+              variant="primary"
+              size="sm"
+              leadingIcon="add"
+              style={{ marginTop: 'var(--s-2)' }}
+            >
+              Manage RAG servers
+            </Button>
           </div>
         ) : (
           <>
             <div className="course-form__field">
-              <label className="course-form__label" htmlFor="project">
-                Project
+              <label className="course-form__label" htmlFor="rag-server">
+                RAG server
               </label>
               <Select
-                value={projectId}
-                onChange={setProjectId}
-                placeholder="Choose a project"
-                options={ragReadyProjects.map((p) => ({
-                  value: p.id,
-                  label: p.name,
+                value={ragServerId}
+                onChange={setRagServerId}
+                placeholder="Choose a RAG server"
+                options={ragServers.map((s) => ({
+                  value: s.id,
+                  label: `${s.name} (${s.corpus_id})`,
                 }))}
               />
               <span className="course-form__hint">
-                Only projects with RAG enabled + a RAG server selected are
-                shown.
+                Pick the corpus the research agent will search during
+                generation.
+              </span>
+            </div>
+
+            <div className="course-form__field">
+              <label className="course-form__label" htmlFor="topk">
+                Retrieval top_k
+              </label>
+              <input
+                id="topk"
+                className="course-form__input"
+                type="number"
+                min={1}
+                max={50}
+                value={ragTopK}
+                onChange={(e) => setRagTopK(e.target.value)}
+                style={{ maxWidth: 120 }}
+              />
+              <span className="course-form__hint">
+                How many results the agent fetches per query (1–50, default 5).
               </span>
             </div>
 
@@ -165,7 +204,10 @@ export const NewCourseForm = () => {
                 <Select
                   value={current}
                   onChange={(v) => setCurrent(v as ExpertiseLevel)}
-                  options={EXPERTISE_LEVELS.map((v) => ({ value: v, label: v }))}
+                  options={EXPERTISE_LEVELS.map((v) => ({
+                    value: v,
+                    label: v,
+                  }))}
                 />
               </div>
               <div className="course-form__field">
@@ -173,7 +215,10 @@ export const NewCourseForm = () => {
                 <Select
                   value={target}
                   onChange={(v) => setTarget(v as ExpertiseLevel)}
-                  options={EXPERTISE_LEVELS.map((v) => ({ value: v, label: v }))}
+                  options={EXPERTISE_LEVELS.map((v) => ({
+                    value: v,
+                    label: v,
+                  }))}
                 />
               </div>
             </div>
@@ -239,7 +284,11 @@ export const NewCourseForm = () => {
                       className={`course-form__resource-chip${on ? ' course-form__resource-chip--on' : ''}`}
                       onClick={() => {
                         const next = new Set(resources)
-                        on ? next.delete(r) : next.add(r)
+                        if (on) {
+                          next.delete(r)
+                        } else {
+                          next.add(r)
+                        }
                         setResources(next)
                       }}
                       aria-pressed={on}
@@ -259,7 +308,9 @@ export const NewCourseForm = () => {
                 id="ctx"
                 className="course-form__textarea"
                 value={learnerContext}
-                onChange={(e) => setLearnerContext(e.target.value.slice(0, 1000))}
+                onChange={(e) =>
+                  setLearnerContext(e.target.value.slice(0, 1000))
+                }
                 placeholder="Anything else the model should know about the learner."
               />
               <span className="course-form__hint">

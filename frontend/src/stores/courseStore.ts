@@ -35,7 +35,8 @@ interface CourseStore {
 const _toListItem = (c: Course): CourseListItem => ({
   id: c.id,
   title: c.title,
-  project_id: c.project_id,
+  rag_server_id: c.rag_server_id,
+  rag_top_k: c.rag_top_k,
   status: c.status,
   total_hours: c.outline?.total_hours ?? null,
   topic: c.input?.topic ?? c.title,
