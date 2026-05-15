@@ -1,5 +1,16 @@
 /* Course generator UI styles. */
 
+/* Each top-level course page renders as <ViewHeader> + a body div. The
+ * surrounding .app__main is overflow:hidden, so the body must claim the
+ * remaining vertical space and scroll internally. */
+.course-list,
+.course-form,
+.course-detail {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .course-list {
   padding: var(--s-6);
   display: flex;
@@ -7,6 +18,7 @@
   gap: var(--s-4);
   max-width: 960px;
   margin: 0 auto;
+  width: 100%;
 }
 
 .course-list__empty {
