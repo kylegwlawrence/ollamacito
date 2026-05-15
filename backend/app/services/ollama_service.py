@@ -57,14 +57,33 @@ class OllamaService:
         Get list of available Ollama models.
 
         Returns:
-            List[Dict]: List of model information
+            List[Dict]: List of model dicts shaped as
+                {name, size, digest, modified_at}. The `name` field is sourced
+                from ollama-python's `Model.model` attribute (the package
+                renamed the field in 0.4+).
 
         Raises:
             OllamaConnectionError: If unable to connect to Ollama
         """
         try:
             response = await self.client.list()
-            models = response.get("models", [])
+            raw_models = response.models or []
+            models: List[Dict] = []
+            for m in raw_models:
+                modified_at = getattr(m, "modified_at", None)
+                models.append(
+                    {
+                        "name": getattr(m, "model", "") or "",
+                        "size": getattr(m, "size", None),
+                        "digest": getattr(m, "digest", None),
+                        "modified_at": (
+                            modified_at.isoformat()
+                            if modified_at is not None
+                            and hasattr(modified_at, "isoformat")
+                            else modified_at
+                        ),
+                    }
+                )
             logger.info(f"Retrieved {len(models)} models from Ollama")
             return models
         except Exception as e:
@@ -86,9 +105,9 @@ class OllamaService:
         """
         try:
             models = await self.get_models()
-            model_names = [m.get("name", "").split(":")[0] for m in models]
+            model_names = [m["name"].split(":")[0] for m in models]
             exists = model_name in model_names or any(
-                model_name in m.get("name", "") for m in models
+                model_name in m["name"] for m in models
             )
             logger.debug(f"Model '{model_name}' exists: {exists}")
             return exists

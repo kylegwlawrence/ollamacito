@@ -8,11 +8,11 @@ asyncpg==0.29.0
 alembic==1.13.1
 
 # Data Validation
-pydantic==2.6.1
+pydantic==2.9.2
 pydantic-settings==2.1.0
 
 # Ollama Integration
-ollama==0.1.6
+ollama==0.6.2
 
 # HTTP Client
 # (managed by ollama dependency)
