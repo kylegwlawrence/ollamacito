@@ -161,6 +161,9 @@ export interface Course {
   input: CourseGenerationRequest
   outline: CourseOutline | null
   validation_errors: ValidationErrorEntry[] | null
+  override_model: string | null
+  override_temperature: number | null
+  override_num_ctx: number | null
   model_used: string | null
   created_at: string
   updated_at: string
@@ -184,12 +187,18 @@ export interface CourseCreate {
   rag_server_id: string
   rag_top_k: number
   input: CourseGenerationRequest
+  override_model?: string | null
+  override_temperature?: number | null
+  override_num_ctx?: number | null
 }
 
 export interface CourseUpdate {
   title?: string
   rag_server_id?: string
   rag_top_k?: number
+  override_model?: string | null
+  override_temperature?: number | null
+  override_num_ctx?: number | null
 }
 
 export interface CourseRegenerateRequest {

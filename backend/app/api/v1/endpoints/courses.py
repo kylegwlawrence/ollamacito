@@ -153,6 +153,9 @@ async def create_course(
         title=body.input.topic[:256],
         status=CourseStatus.PENDING,
         input=body.input.model_dump(mode="json"),
+        override_model=body.override_model or None,
+        override_temperature=body.override_temperature,
+        override_num_ctx=body.override_num_ctx,
     )
     db.add(course)
     await db.commit()
@@ -227,6 +230,12 @@ async def update_course(
         course.rag_top_k = body.rag_top_k
     if body.title is not None:
         course.title = body.title
+    if body.override_model is not None:
+        course.override_model = body.override_model or None
+    if body.override_temperature is not None:
+        course.override_temperature = body.override_temperature
+    if body.override_num_ctx is not None:
+        course.override_num_ctx = body.override_num_ctx
     await db.commit()
     await db.refresh(course)
     return CourseResponse.model_validate(course)

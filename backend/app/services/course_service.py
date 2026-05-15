@@ -189,6 +189,8 @@ async def _run_research_phase(
     rag_top_k: int,
     model: str,
     user_settings: Settings,
+    effective_temperature: float,
+    effective_num_ctx: int,
     is_disconnected: Callable[[], Awaitable[bool]],
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """Yield research-phase frames AND a synthetic final frame
@@ -200,8 +202,8 @@ async def _run_research_phase(
         {"role": "user", "content": "Research and plan the course."}
     ]
     options = {
-        "temperature": user_settings.default_temperature,
-        "num_ctx": user_settings.num_ctx,
+        "temperature": effective_temperature,
+        "num_ctx": effective_num_ctx,
     }
     result = AgentRunResult()
 
@@ -298,7 +300,17 @@ async def generate_course(
         course.outline = None
         await db.commit()
 
-        model = user_settings.default_model
+        model = course.override_model or user_settings.default_model
+        effective_temperature = (
+            course.override_temperature
+            if course.override_temperature is not None
+            else user_settings.default_temperature
+        )
+        effective_num_ctx = (
+            course.override_num_ctx
+            if course.override_num_ctx is not None
+            else user_settings.num_ctx
+        )
 
         yield {"type": "phase", "name": "research"}
 
@@ -310,6 +322,8 @@ async def generate_course(
             rag_top_k=rag_top_k,
             model=model,
             user_settings=user_settings,
+            effective_temperature=effective_temperature,
+            effective_num_ctx=effective_num_ctx,
             is_disconnected=is_disconnected,
         ):
             ftype = frame.get("type", "")
@@ -358,7 +372,7 @@ async def generate_course(
             # Lower temperature for structured output to stay closer to the schema.
             "temperature": 0.2,
             # Give the assembly call plenty of context for big research dumps.
-            "num_ctx": max(user_settings.num_ctx, 8192),
+            "num_ctx": max(effective_num_ctx, 8192),
         }
 
         try:

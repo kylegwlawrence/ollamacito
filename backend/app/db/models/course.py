@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -80,6 +80,10 @@ class Course(Base, TimestampMixin):
     # List of {path, msg} dicts surfaced by `validate_outline`. Non-empty
     # entries set status=needs_review rather than rejecting the result.
     validation_errors: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+
+    override_model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    override_temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    override_num_ctx: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     model_used: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     generated_at: Mapped[Optional[datetime]] = mapped_column(

@@ -242,6 +242,9 @@ class CourseCreate(BaseModel):
     rag_server_id: UUID
     rag_top_k: int = Field(..., ge=1, le=50)
     input: CourseGenerationRequest
+    override_model: Optional[str] = None
+    override_temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    override_num_ctx: Optional[int] = Field(default=None, ge=512, le=131072)
 
 
 class CourseUpdate(BaseModel):
@@ -255,6 +258,9 @@ class CourseUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=256)
     rag_server_id: Optional[UUID] = None
     rag_top_k: Optional[int] = Field(None, ge=1, le=50)
+    override_model: Optional[str] = None
+    override_temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    override_num_ctx: Optional[int] = Field(default=None, ge=512, le=131072)
 
 
 class CourseRegenerateRequest(BaseModel):
@@ -286,6 +292,9 @@ class CourseResponse(BaseModel):
     input: CourseGenerationRequest
     outline: Optional[CourseOutline] = None
     validation_errors: Optional[List[ValidationErrorEntry]] = None
+    override_model: Optional[str] = None
+    override_temperature: Optional[float] = None
+    override_num_ctx: Optional[int] = None
     model_used: Optional[str] = None
     created_at: datetime
     updated_at: datetime

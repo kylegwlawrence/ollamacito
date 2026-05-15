@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCourseStore } from '@/stores/courseStore'
 import { useRagServersStore } from '@/stores/ragServersStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { useToastStore } from '@/stores/toastStore'
+import { useModels } from '@/hooks/useModels'
 import { Button } from '../common/Button'
 import { Select } from '../common/Select'
 import { ViewHeader } from '../common/ViewHeader'
@@ -54,6 +56,8 @@ export const NewCourseForm = () => {
   const ragServersLoaded = useRagServersStore((s) => s.loaded)
   const createCourse = useCourseStore((s) => s.createCourse)
   const showToast = useToastStore((s) => s.showToast)
+  const globalSettings = useSettingsStore((s) => s.settings)
+  const { models } = useModels()
 
   const [ragServerId, setRagServerId] = useState<string>('')
   const [ragTopK, setRagTopK] = useState<string>('5')
@@ -67,6 +71,13 @@ export const NewCourseForm = () => {
     new Set(['readings', 'quizzes'])
   )
   const [learnerContext, setLearnerContext] = useState('')
+  const [overrideModel, setOverrideModel] = useState<string>('')
+  const [overrideTemperature, setOverrideTemperature] = useState<string>(() =>
+    String(globalSettings.default_temperature)
+  )
+  const [overrideNumCtx, setOverrideNumCtx] = useState<string>(() =>
+    String(globalSettings.num_ctx)
+  )
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -84,6 +95,14 @@ export const NewCourseForm = () => {
     }
     if (min < 1 || max < 1) return 'Hours must be ≥ 1.'
     if (max < min) return 'Maximum hours must be ≥ minimum hours.'
+    const temp = Number(overrideTemperature)
+    if (!Number.isFinite(temp) || temp < 0 || temp > 2) {
+      return 'Temperature must be between 0 and 2.'
+    }
+    const ctx = Number(overrideNumCtx)
+    if (!Number.isFinite(ctx) || ctx < 512 || ctx > 131072) {
+      return 'Context window must be between 512 and 131072.'
+    }
     return null
   }
 
@@ -111,6 +130,9 @@ export const NewCourseForm = () => {
       rag_server_id: ragServerId,
       rag_top_k: Number(ragTopK),
       input,
+      override_model: overrideModel || null,
+      override_temperature: Number(overrideTemperature),
+      override_num_ctx: Number(overrideNumCtx),
     })
     setSubmitting(false)
     if (created) {
@@ -297,6 +319,54 @@ export const NewCourseForm = () => {
                     </button>
                   )
                 })}
+              </div>
+            </div>
+
+            <div className="course-form__field">
+              <label className="course-form__label">Model</label>
+              <Select
+                value={overrideModel}
+                onChange={setOverrideModel}
+                placeholder={`Default (${globalSettings.default_model || 'global setting'})`}
+                options={models.map((m) => ({ value: m.name, label: m.name }))}
+              />
+              <span className="course-form__hint">
+                Leave blank to use the global default model.
+              </span>
+            </div>
+
+            <div className="course-form__row">
+              <div className="course-form__field">
+                <label className="course-form__label" htmlFor="temperature">
+                  Temperature
+                </label>
+                <input
+                  id="temperature"
+                  className="course-form__input"
+                  type="number"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  value={overrideTemperature}
+                  onChange={(e) => setOverrideTemperature(e.target.value)}
+                  style={{ maxWidth: 120 }}
+                />
+              </div>
+              <div className="course-form__field">
+                <label className="course-form__label" htmlFor="num-ctx">
+                  Context window
+                </label>
+                <input
+                  id="num-ctx"
+                  className="course-form__input"
+                  type="number"
+                  min={512}
+                  max={131072}
+                  step={512}
+                  value={overrideNumCtx}
+                  onChange={(e) => setOverrideNumCtx(e.target.value)}
+                  style={{ maxWidth: 160 }}
+                />
               </div>
             </div>
 
