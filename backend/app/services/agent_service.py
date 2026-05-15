@@ -266,6 +266,7 @@ async def run_agent(
     result: AgentRunResult,
     is_disconnected: Callable[[], Awaitable[bool]],
     max_iters: int = 5,
+    system_prompt: Optional[str] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Drive the agent loop and yield NDJSON frame dicts for the endpoint to
@@ -273,6 +274,10 @@ async def run_agent(
 
     `initial_messages` should already include the chat history + the new user
     message. The agent prepends its own system prompt directive.
+
+    Pass `system_prompt` to replace the default chat-agent directive (used by
+    the course-generator pipeline to instruct the model to gather research
+    notes instead of answering a chat turn).
     """
     # Pre-flight: fetch /rag/info to get article_url_template for citations.
     server = project.rag_server
@@ -293,9 +298,11 @@ async def run_agent(
     article_url_template = info.get("article_url_template", "/article/{title}")
 
     # Prepend the agent system directive. If there's already a system message
-    # from project custom instructions etc., this stacks on top of it.
+    # from project custom instructions etc., this stacks on top of it. Callers
+    # may override the default directive (course generator does this for its
+    # research-notes phase).
     messages: List[Dict[str, Any]] = [
-        {"role": "system", "content": AGENT_SYSTEM_PROMPT}
+        {"role": "system", "content": system_prompt or AGENT_SYSTEM_PROMPT}
     ] + list(initial_messages)
     agent_options = _agent_options(options)
 

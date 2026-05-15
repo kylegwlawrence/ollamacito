@@ -183,6 +183,55 @@ class OllamaService:
             logger.error(f"Error in chat request: {e}")
             raise OllamaConnectionError(self.base_url, str(e)) from e
 
+    async def chat_structured(
+        self,
+        model: str,
+        messages: List[Dict[str, str]],
+        json_schema: Dict,
+        options: Optional[Dict] = None,
+    ) -> str:
+        """
+        Single non-streaming chat with Ollama's `format=<json_schema>` mode.
+
+        The model is expected to emit a JSON object conforming to the supplied
+        schema. We return the raw JSON string; callers parse + validate it
+        with their own Pydantic model so this service stays schema-agnostic.
+
+        Args:
+            model: Model name to use.
+            messages: List of message dicts with 'role' and 'content'.
+            json_schema: A JSON Schema dict (typically from
+                `SomePydanticModel.model_json_schema()`).
+            options: Optional Ollama options dict (num_ctx, temperature, etc.).
+
+        Returns:
+            str: The model's `message.content` (expected to be JSON).
+
+        Raises:
+            OllamaConnectionError: If unable to connect.
+            OllamaModelNotFoundError: If model not found.
+        """
+        try:
+            logger.info(f"Sending structured chat request to model '{model}'")
+            response = await self.client.chat(
+                model=model,
+                messages=messages,
+                format=json_schema,
+                options=options or {},
+                stream=False,
+            )
+            content = getattr(response.message, "content", None)
+            if content is None and isinstance(response, dict):
+                content = response.get("message", {}).get("content", "")
+            return content or ""
+        except Exception as e:
+            error_str = str(e).lower()
+            if "not found" in error_str or "does not exist" in error_str:
+                logger.error(f"Model '{model}' not found")
+                raise OllamaModelNotFoundError(model) from e
+            logger.error(f"Error in structured chat request: {e}")
+            raise OllamaConnectionError(self.base_url, str(e)) from e
+
     async def stream_chat(
         self,
         model: str,
