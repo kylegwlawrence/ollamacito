@@ -34,7 +34,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.core.logging import get_logger
-from app.db.models import Course, CourseStatus, Project, User
+from app.db.models import Course, CourseStatus, RagServer, User
 from app.db.models import Settings as UserSettings
 from app.schemas.course import (
     CourseCreate,
@@ -43,10 +43,7 @@ from app.schemas.course import (
     CourseResponse,
     CourseUpdate,
 )
-from app.services.course_service import (
-    _project_has_full_rag_config,
-    generate_course,
-)
+from app.services.course_service import generate_course
 
 logger = get_logger(__name__)
 
@@ -79,14 +76,14 @@ async def _load_user_settings(db: AsyncSession, user_id: UUID) -> UserSettings:
 async def _load_course_or_404(
     db: AsyncSession, course_id: UUID, user_id: UUID
 ) -> Course:
-    """Load a Course for the current user, eager-loading project + rag_server.
+    """Load a Course for the current user, eager-loading rag_server.
 
     Cross-user access returns 404 (not 403) to avoid leaking existence.
     """
     result = await db.execute(
         select(Course)
         .where(Course.id == course_id, Course.user_id == user_id)
-        .options(selectinload(Course.project).selectinload(Project.rag_server))
+        .options(selectinload(Course.rag_server))
     )
     course = result.scalar_one_or_none()
     if course is None:
@@ -95,6 +92,27 @@ async def _load_course_or_404(
             detail=f"Course {course_id} not found",
         )
     return course
+
+
+async def _validate_rag_server_owned(
+    db: AsyncSession, user: User, rag_server_id: UUID
+) -> None:
+    """Raise 422 if the referenced RAG server is missing or owned by another user.
+
+    Mirrors `_validate_rag_server_owned` in endpoints/projects.py.
+    """
+    server = (
+        await db.execute(
+            select(RagServer).where(
+                RagServer.id == rag_server_id, RagServer.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if server is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="rag_server_id does not refer to a RAG server you own.",
+        )
 
 
 def _total_hours_from_outline(outline: dict | None) -> float | None:
@@ -121,34 +139,17 @@ async def create_course(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> CourseResponse:
-    """Create a Course row in `status=pending`. Generation does not auto-fire."""
-    project = (
-        await db.execute(
-            select(Project)
-            .where(
-                Project.id == body.project_id,
-                Project.user_id == current_user.id,
-            )
-            .options(selectinload(Project.rag_server))
-        )
-    ).scalar_one_or_none()
-    if project is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {body.project_id} not found",
-        )
-    if not _project_has_full_rag_config(project):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                "Project RAG is not fully configured. Enable RAG and select "
-                "a RAG server + top_k before creating a course in this project."
-            ),
-        )
+    """Create a Course row in `status=pending`. Generation does not auto-fire.
+
+    The course is bound to a RAG server (must be owned by the current user)
+    and a top_k. It does not depend on a Project — courses are standalone.
+    """
+    await _validate_rag_server_owned(db, current_user, body.rag_server_id)
 
     course = Course(
         user_id=current_user.id,
-        project_id=project.id,
+        rag_server_id=body.rag_server_id,
+        rag_top_k=body.rag_top_k,
         title=body.input.topic[:256],
         status=CourseStatus.PENDING,
         input=body.input.model_dump(mode="json"),
@@ -185,7 +186,8 @@ async def list_courses(
             CourseListItem(
                 id=c.id,
                 title=c.title,
-                project_id=c.project_id,
+                rag_server_id=c.rag_server_id,
+                rag_top_k=c.rag_top_k,
                 status=CourseStatus(
                     c.status.value if hasattr(c.status, "value") else c.status
                 ),
@@ -216,7 +218,13 @@ async def update_course(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> CourseResponse:
+    """Edit title and/or repoint the course at a different RAG server / top_k."""
     course = await _load_course_or_404(db, course_id, current_user.id)
+    if body.rag_server_id is not None:
+        await _validate_rag_server_owned(db, current_user, body.rag_server_id)
+        course.rag_server_id = body.rag_server_id
+    if body.rag_top_k is not None:
+        course.rag_top_k = body.rag_top_k
     if body.title is not None:
         course.title = body.title
     await db.commit()
@@ -277,12 +285,12 @@ async def generate(
 ) -> StreamingResponse:
     """Run the two-step pipeline against an existing Course. Streams NDJSON."""
     course = await _load_course_or_404(db, course_id, current_user.id)
-    if not _project_has_full_rag_config(course.project):
+    if course.rag_server is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                "Project RAG is not fully configured. Configure it before "
-                "generating, then retry."
+                "Course has no RAG server. Pick one in the course settings, "
+                "then retry."
             ),
         )
     # Surface a clear 500 here if the user's Settings row is missing, rather
@@ -320,12 +328,12 @@ async def regenerate(
     await db.commit()
     await db.refresh(course)
 
-    if not _project_has_full_rag_config(course.project):
+    if course.rag_server is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                "Project RAG is not fully configured. Configure it before "
-                "regenerating, then retry."
+                "Course has no RAG server. Pick one in the course settings, "
+                "then retry."
             ),
         )
 

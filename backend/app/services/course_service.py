@@ -22,12 +22,11 @@ from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings as app_settings
 from app.core.logging import get_logger
-from app.db.models import Course, CourseStatus, Project, Settings
+from app.db.models import Course, CourseStatus, RagServer, Settings
 from app.db.session import AsyncSessionLocal
 from app.schemas.course import (
     AgeCategory,
@@ -163,28 +162,19 @@ def validate_outline(
 
 
 # ---------------------------------------------------------------------------
-# Project loading + RAG gate
+# RAG context gate
 # ---------------------------------------------------------------------------
 
 
-def _project_has_full_rag_config(project: Optional[Project]) -> bool:
-    """Mirror of the chat-side gate; the agent loop reads the same fields."""
-    return bool(
-        project is not None
-        and project.rag_enabled
-        and project.rag_server_id is not None
-        and project.rag_server is not None
-        and project.rag_top_k is not None
-    )
+def _has_rag_context(rag_server: Optional[RagServer], rag_top_k: Optional[int]) -> bool:
+    """The agent loop reads (rag_server.url, rag_server.corpus_id, rag_top_k).
 
-
-async def _load_project(db: AsyncSession, project_id: Any) -> Optional[Project]:
-    result = await db.execute(
-        select(Project)
-        .where(Project.id == project_id)
-        .options(selectinload(Project.rag_server))
-    )
-    return result.scalar_one_or_none()
+    Returns True iff all three are set. The Course's NOT NULL constraints
+    make this practically redundant on the create path, but it's still useful
+    on the generate path in case the RAG server got deleted out from under
+    the course between creation and generation.
+    """
+    return bool(rag_server is not None and rag_top_k is not None and rag_top_k > 0)
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +185,8 @@ async def _load_project(db: AsyncSession, project_id: Any) -> Optional[Project]:
 async def _run_research_phase(
     *,
     request: CourseGenerationRequest,
-    project: Project,
+    rag_server: RagServer,
+    rag_top_k: int,
     model: str,
     user_settings: Settings,
     is_disconnected: Callable[[], Awaitable[bool]],
@@ -218,7 +209,8 @@ async def _run_research_phase(
         model=model,
         initial_messages=initial_messages,
         options=options,
-        project=project,
+        rag_server=rag_server,
+        rag_top_k=rag_top_k,
         result=result,
         is_disconnected=is_disconnected,
         max_iters=8,  # research benefits from a bit more headroom than chat agent
@@ -250,13 +242,13 @@ async def generate_course(
     to the caller.
     """
     async with AsyncSessionLocal() as db:
-        # Load the course + project + rag_server eagerly so the agent loop
-        # can read project.rag_server without lazy-loading on a closed session.
+        # Load the course + rag_server eagerly so the agent loop can read
+        # rag_server.url / .corpus_id without lazy-loading on a closed session.
         course = (
             await db.execute(
                 select(Course)
                 .where(Course.id == course_id, Course.user_id == user_id)
-                .options(selectinload(Course.project).selectinload(Project.rag_server))
+                .options(selectinload(Course.rag_server))
             )
         ).scalar_one_or_none()
         if course is None:
@@ -273,7 +265,8 @@ async def generate_course(
             yield {"type": "done", "status": CourseStatus.FAILED.value}
             return
 
-        project = course.project
+        rag_server = course.rag_server
+        rag_top_k = course.rag_top_k
 
         try:
             request = CourseGenerationRequest.model_validate(course.input)
@@ -286,14 +279,14 @@ async def generate_course(
             yield {"type": "done", "status": course.status.value}
             return
 
-        if not _project_has_full_rag_config(project):
+        if not _has_rag_context(rag_server, rag_top_k):
             msg = (
-                "Project RAG is not fully configured (rag_enabled, rag_server, "
-                "rag_top_k all required). Configure it from the project settings, "
-                "then retry."
+                "Course has no usable RAG context (rag_server missing or "
+                "rag_top_k unset). The RAG server may have been deleted; pick "
+                "a different one from the course settings and retry."
             )
             course.status = CourseStatus.FAILED
-            course.validation_errors = [{"path": "project.rag", "msg": msg}]
+            course.validation_errors = [{"path": "course.rag", "msg": msg}]
             await db.commit()
             yield {"type": "error", "message": msg}
             yield {"type": "done", "status": course.status.value}
@@ -313,7 +306,8 @@ async def generate_course(
         research_failed = False
         async for frame in _run_research_phase(
             request=request,
-            project=project,
+            rag_server=rag_server,
+            rag_top_k=rag_top_k,
             model=model,
             user_settings=user_settings,
             is_disconnected=is_disconnected,
