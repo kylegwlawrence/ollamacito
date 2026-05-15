@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     chats,
+    courses,
     messages,
     models,
     projects,
@@ -19,6 +20,7 @@ api_router = APIRouter()
 api_router.include_router(projects.router, prefix="/projects", tags=["projects"])
 api_router.include_router(chats.router, prefix="/chats", tags=["chats"])
 api_router.include_router(messages.router, prefix="/chats", tags=["messages"])
+api_router.include_router(courses.router, prefix="/courses", tags=["courses"])
 api_router.include_router(models.router, prefix="/ollama", tags=["ollama"])
 api_router.include_router(
     rag_servers.router, prefix="/rag-servers", tags=["rag-servers"]
