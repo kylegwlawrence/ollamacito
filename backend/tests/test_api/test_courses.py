@@ -21,7 +21,7 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from app.db.models import Project
+from app.db.models import RagServer
 from app.schemas.course import CourseGenerationRequest, CourseOutline
 from app.services import course_service
 from tests.conftest import create_rag_server
@@ -29,32 +29,17 @@ from tests.conftest import create_rag_server
 # ---------- helpers ----------
 
 
-async def _make_rag_project(
-    async_client: httpx.AsyncClient,
-    *,
-    rag_enabled: bool = True,
-    rag_top_k: int = 5,
-) -> str:
-    """Create a project + RAG server for it. Returns the project id."""
-    rag_server_id: Optional[str] = None
-    if rag_enabled:
-        server = await create_rag_server(
-            async_client,
-            name=f"course-test-{uuid4().hex[:8]}",
-        )
-        rag_server_id = server["id"]
-    project = (
-        await async_client.post(
-            "/api/v1/projects",
-            json={
-                "name": f"course-test-{uuid4().hex[:8]}",
-                "rag_enabled": rag_enabled,
-                "rag_server_id": rag_server_id,
-                "rag_top_k": rag_top_k if rag_enabled else None,
-            },
-        )
-    ).json()
-    return project["id"]
+async def _make_rag_server(async_client: httpx.AsyncClient) -> str:
+    """Create a RAG server for the current user. Returns the rag_server id.
+
+    Mirrors the original `_make_rag_project` helper but doesn't create a
+    Project — courses are standalone now.
+    """
+    server = await create_rag_server(
+        async_client,
+        name=f"course-test-{uuid4().hex[:8]}",
+    )
+    return server["id"]
 
 
 def _valid_request_payload(**overrides: Any) -> Dict[str, Any]:
@@ -183,7 +168,8 @@ def _patch_run_agent(
         model: str,
         initial_messages: List[Dict[str, Any]],
         options: Optional[Dict[str, Any]],
-        project: Project,
+        rag_server: RagServer,
+        rag_top_k: int,
         result: Any,
         is_disconnected: Any,
         max_iters: int = 5,
@@ -247,8 +233,19 @@ def _patch_chat_structured(
     return calls
 
 
-async def _delete_project(async_client: httpx.AsyncClient, project_id: str) -> None:
-    await async_client.delete(f"/api/v1/projects/{project_id}")
+async def _delete_rag_server(
+    async_client: httpx.AsyncClient, rag_server_id: str
+) -> None:
+    """Best-effort cleanup: delete every course pointing at this RAG server
+    first (the courses_rag_server_id FK is ON DELETE RESTRICT), then delete
+    the RAG server itself.
+    """
+    list_resp = await async_client.get("/api/v1/courses")
+    if list_resp.status_code == 200:
+        for course in list_resp.json():
+            if course.get("rag_server_id") == rag_server_id:
+                await async_client.delete(f"/api/v1/courses/{course['id']}")
+    await async_client.delete(f"/api/v1/rag-servers/{rag_server_id}")
 
 
 def _parse_ndjson(text: str) -> List[Dict[str, Any]]:
@@ -283,100 +280,169 @@ class TestCourseCRUD:
     async def test_create_course_persists_with_pending_status(
         self, async_client: httpx.AsyncClient
     ) -> None:
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             r = await async_client.post(
                 "/api/v1/courses",
-                json={"project_id": project_id, "input": _valid_request_payload()},
+                json={
+                    "rag_server_id": rag_server_id,
+                    "rag_top_k": 5,
+                    "input": _valid_request_payload(),
+                },
             )
             assert r.status_code == 201, r.text
             data = r.json()
             assert data["status"] == "pending"
-            assert data["project_id"] == project_id
+            assert data["rag_server_id"] == rag_server_id
+            assert data["rag_top_k"] == 5
             assert data["input"]["topic"] == "Photosynthesis"
             assert data["outline"] is None
             assert data["title"] == "Photosynthesis"
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
     @pytest.mark.asyncio
-    async def test_create_course_fails_if_project_has_incomplete_rag(
+    async def test_create_course_fails_with_unowned_rag_server_id(
         self, async_client: httpx.AsyncClient
     ) -> None:
-        project_id = await _make_rag_project(async_client, rag_enabled=False)
-        try:
-            r = await async_client.post(
-                "/api/v1/courses",
-                json={"project_id": project_id, "input": _valid_request_payload()},
-            )
-            assert r.status_code == 422, r.text
-        finally:
-            await _delete_project(async_client, project_id)
+        """Submitting another user's (or a fake) rag_server_id is a 422."""
+        bogus = str(uuid4())
+        r = await async_client.post(
+            "/api/v1/courses",
+            json={
+                "rag_server_id": bogus,
+                "rag_top_k": 5,
+                "input": _valid_request_payload(),
+            },
+        )
+        assert r.status_code == 422, r.text
 
     @pytest.mark.asyncio
     async def test_create_course_fails_with_invalid_input(
         self, async_client: httpx.AsyncClient
     ) -> None:
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             r = await async_client.post(
                 "/api/v1/courses",
                 json={
-                    "project_id": project_id,
+                    "rag_server_id": rag_server_id,
+                    "rag_top_k": 5,
                     "input": _valid_request_payload(hours_min=10, hours_max=5),
                 },
             )
             assert r.status_code == 422
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
+
+    @pytest.mark.asyncio
+    async def test_create_course_works_with_no_projects_in_db(
+        self,
+        async_client: httpx.AsyncClient,
+    ) -> None:
+        """The headline scenario for the standalone-RAG refactor.
+
+        With ZERO projects in the DB, creating a course must still succeed
+        — courses are first-class and only need a RAG server.
+        """
+        from sqlalchemy import delete
+
+        from app.db.models import Course as CourseModel
+        from app.db.models import Project as ProjectModel
+        from app.db.session import AsyncSessionLocal
+
+        # Nuke any pre-existing projects + courses from previous test runs.
+        async with AsyncSessionLocal() as session:
+            await session.execute(delete(CourseModel))
+            await session.execute(delete(ProjectModel))
+            await session.commit()
+
+        rag_server_id = await _make_rag_server(async_client)
+        try:
+            r = await async_client.post(
+                "/api/v1/courses",
+                json={
+                    "rag_server_id": rag_server_id,
+                    "rag_top_k": 5,
+                    "input": _valid_request_payload(),
+                },
+            )
+            assert r.status_code == 201, r.text
+
+            # And confirm projects really are empty.
+            async with AsyncSessionLocal() as session:
+                from sqlalchemy import func, select
+
+                count = (
+                    await session.execute(
+                        select(func.count()).select_from(ProjectModel)
+                    )
+                ).scalar_one()
+            assert count == 0
+        finally:
+            # Best-effort; will RESTRICT if a Course still references it
+            await async_client.delete(f"/api/v1/courses/{r.json()['id']}")
+            await _delete_rag_server(async_client, rag_server_id)
 
     @pytest.mark.asyncio
     async def test_list_returns_user_courses_only(
         self, async_client: httpx.AsyncClient
     ) -> None:
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             await async_client.post(
                 "/api/v1/courses",
-                json={"project_id": project_id, "input": _valid_request_payload()},
+                json={
+                    "rag_server_id": rag_server_id,
+                    "rag_top_k": 5,
+                    "input": _valid_request_payload(),
+                },
             )
             r = await async_client.get("/api/v1/courses")
             assert r.status_code == 200
             items = r.json()
             assert isinstance(items, list)
             assert any(
-                i["project_id"] == project_id and i["topic"] == "Photosynthesis"
+                i["rag_server_id"] == rag_server_id and i["topic"] == "Photosynthesis"
                 for i in items
             )
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
     @pytest.mark.asyncio
     async def test_get_returns_course(self, async_client: httpx.AsyncClient) -> None:
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             created = (
                 await async_client.post(
                     "/api/v1/courses",
-                    json={"project_id": project_id, "input": _valid_request_payload()},
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
                 )
             ).json()
             r = await async_client.get(f"/api/v1/courses/{created['id']}")
             assert r.status_code == 200
             assert r.json()["id"] == created["id"]
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
     @pytest.mark.asyncio
     async def test_patch_title_updates_record(
         self, async_client: httpx.AsyncClient
     ) -> None:
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             created = (
                 await async_client.post(
                     "/api/v1/courses",
-                    json={"project_id": project_id, "input": _valid_request_payload()},
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
                 )
             ).json()
             r = await async_client.patch(
@@ -386,16 +452,20 @@ class TestCourseCRUD:
             assert r.status_code == 200
             assert r.json()["title"] == "Renamed"
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
     @pytest.mark.asyncio
     async def test_delete_removes_record(self, async_client: httpx.AsyncClient) -> None:
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             created = (
                 await async_client.post(
                     "/api/v1/courses",
-                    json={"project_id": project_id, "input": _valid_request_payload()},
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
                 )
             ).json()
             r = await async_client.delete(f"/api/v1/courses/{created['id']}")
@@ -403,7 +473,7 @@ class TestCourseCRUD:
             r = await async_client.get(f"/api/v1/courses/{created['id']}")
             assert r.status_code == 404
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
     @pytest.mark.asyncio
     async def test_get_returns_404_for_unknown_id(
@@ -426,12 +496,16 @@ class TestCourseGeneration:
         _patch_run_agent(monkeypatch)
         _patch_chat_structured(monkeypatch)
 
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             created = (
                 await async_client.post(
                     "/api/v1/courses",
-                    json={"project_id": project_id, "input": _valid_request_payload()},
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
                 )
             ).json()
             sc, frames = await _read_stream(
@@ -448,7 +522,7 @@ class TestCourseGeneration:
             assert types[-1] == "done"
             assert frames[-1]["status"] == "complete"
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
     @pytest.mark.asyncio
     async def test_generate_persists_outline_on_success(
@@ -459,12 +533,16 @@ class TestCourseGeneration:
         _patch_run_agent(monkeypatch)
         _patch_chat_structured(monkeypatch)
 
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             created = (
                 await async_client.post(
                     "/api/v1/courses",
-                    json={"project_id": project_id, "input": _valid_request_payload()},
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
                 )
             ).json()
             await _read_stream(
@@ -478,7 +556,7 @@ class TestCourseGeneration:
             assert data["outline"]["title"] == "Photosynthesis 101"
             assert data["model_used"] is not None
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
     @pytest.mark.asyncio
     async def test_generate_sets_needs_review_on_validation_failure(
@@ -493,12 +571,16 @@ class TestCourseGeneration:
         broken["modules"][0]["lessons"][0]["prerequisite_ids"] = ["les-99-99"]
         _patch_chat_structured(monkeypatch, payload=broken)
 
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             created = (
                 await async_client.post(
                     "/api/v1/courses",
-                    json={"project_id": project_id, "input": _valid_request_payload()},
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
                 )
             ).json()
             _, frames = await _read_stream(
@@ -509,7 +591,7 @@ class TestCourseGeneration:
             assert validation_frames
             assert any("les-99-99" in e["msg"] for e in validation_frames[0]["errors"])
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
     @pytest.mark.asyncio
     async def test_generate_sets_failed_on_parse_error(
@@ -520,12 +602,16 @@ class TestCourseGeneration:
         _patch_run_agent(monkeypatch)
         _patch_chat_structured(monkeypatch, raw_text="{not valid json")
 
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             created = (
                 await async_client.post(
                     "/api/v1/courses",
-                    json={"project_id": project_id, "input": _valid_request_payload()},
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
                 )
             ).json()
             _, frames = await _read_stream(
@@ -535,7 +621,7 @@ class TestCourseGeneration:
             r = await async_client.get(f"/api/v1/courses/{created['id']}")
             assert r.json()["status"] == "failed"
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
     @pytest.mark.asyncio
     async def test_generate_fails_if_research_errors(
@@ -546,12 +632,16 @@ class TestCourseGeneration:
         _patch_run_agent(monkeypatch, error="RAG server down")
         _patch_chat_structured(monkeypatch)
 
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             created = (
                 await async_client.post(
                     "/api/v1/courses",
-                    json={"project_id": project_id, "input": _valid_request_payload()},
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
                 )
             ).json()
             _, frames = await _read_stream(
@@ -560,32 +650,13 @@ class TestCourseGeneration:
             assert any(f["type"] == "error" for f in frames)
             assert frames[-1]["status"] == "failed"
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
-    @pytest.mark.asyncio
-    async def test_generate_returns_422_for_rag_incomplete_project(
-        self,
-        async_client: httpx.AsyncClient,
-    ) -> None:
-        # Use raw DB to bypass the create gate and put a Course on a
-        # rag-incomplete project, then hit /generate.
-        project_id = await _make_rag_project(async_client)
-        try:
-            created = (
-                await async_client.post(
-                    "/api/v1/courses",
-                    json={"project_id": project_id, "input": _valid_request_payload()},
-                )
-            ).json()
-            # Now disable RAG on the project.
-            await async_client.patch(
-                f"/api/v1/projects/{project_id}",
-                json={"rag_enabled": False},
-            )
-            r = await async_client.post(f"/api/v1/courses/{created['id']}/generate")
-            assert r.status_code == 422
-        finally:
-            await _delete_project(async_client, project_id)
+    # NOTE: We don't test "deleting a RAG server while a course references
+    # it" here — that would exercise the rag-servers DELETE endpoint's
+    # IntegrityError handling, which is out of scope for this refactor. The
+    # FK RESTRICT is enforced at the DB level; the surface-level UX of how
+    # the rag-servers endpoint reports that conflict is its own concern.
 
 
 # ---------- Regenerate ----------
@@ -601,12 +672,16 @@ class TestRegenerate:
         _patch_run_agent(monkeypatch)
         _patch_chat_structured(monkeypatch)
 
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             created = (
                 await async_client.post(
                     "/api/v1/courses",
-                    json={"project_id": project_id, "input": _valid_request_payload()},
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
                 )
             ).json()
             course_id = created["id"]
@@ -625,7 +700,7 @@ class TestRegenerate:
             assert second["id"] == course_id
             assert second["generated_at"] != first_generated_at
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
     @pytest.mark.asyncio
     async def test_regenerate_with_input_override_persists_new_input(
@@ -636,12 +711,16 @@ class TestRegenerate:
         _patch_run_agent(monkeypatch)
         _patch_chat_structured(monkeypatch)
 
-        project_id = await _make_rag_project(async_client)
+        rag_server_id = await _make_rag_server(async_client)
         try:
             created = (
                 await async_client.post(
                     "/api/v1/courses",
-                    json={"project_id": project_id, "input": _valid_request_payload()},
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
                 )
             ).json()
             course_id = created["id"]
@@ -659,7 +738,7 @@ class TestRegenerate:
             assert updated["input"]["hours_max"] == 10
             assert updated["title"] == "Cellular Respiration"
         finally:
-            await _delete_project(async_client, project_id)
+            await _delete_rag_server(async_client, rag_server_id)
 
 
 # ---------- Validator ----------
