@@ -336,7 +336,7 @@ async def generate_and_update_title(chat_id: UUID, title_model: Optional[str]) -
                         select(Message)
                         .where(Message.chat_id == chat_id, Message.role == "user")
                         .order_by(Message.created_at.asc())
-                        .limit(1)
+                        .limit(2)
                     )
                 )
                 .scalars()
@@ -348,7 +348,7 @@ async def generate_and_update_title(chat_id: UUID, title_model: Optional[str]) -
                         select(Message)
                         .where(Message.chat_id == chat_id, Message.role == "assistant")
                         .order_by(Message.created_at.asc())
-                        .limit(1)
+                        .limit(2)
                     )
                 )
                 .scalars()
@@ -705,7 +705,7 @@ async def stream_chat_response(
 
         # First successful assistant turn → kick off title generation in the
         # background so it never blocks the `done` frame above.
-        if assistant_count == 1 and not is_truncated:
+        if assistant_count == 2 and not is_truncated:
             asyncio.create_task(generate_and_update_title(chat_id, cascade.title_model))
 
     return StreamingResponse(
@@ -855,9 +855,9 @@ async def stream_agent_response(
                     f"[Req {request_id}] Failed to persist agent assistant message: {e}"
                 )
 
-            # Trigger title generation on the first successful assistant turn,
+            # Trigger title generation on the second successful assistant turn,
             # same rule as /stream.
-            if assistant_count == 1 and not is_truncated:
+            if assistant_count == 2 and not is_truncated:
                 asyncio.create_task(
                     generate_and_update_title(chat_id, cascade.title_model)
                 )

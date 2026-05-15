@@ -373,7 +373,7 @@ class OllamaService:
             # Call Ollama with title generation settings
             options = {
                 "num_ctx": 8000,
-                "num_predict": 100,
+                "num_predict": 20,
                 "temperature": 0.7,
             }
 
