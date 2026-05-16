@@ -19,16 +19,23 @@ import {
 } from '@/types'
 import './courses.css'
 
-const SummaryRow = ({
+const SummaryLine = ({
   label,
-  value,
+  parts,
 }: {
   label: string
-  value: ReactNode
+  parts: ReactNode[]
 }) => (
-  <div className="course-detail__inputs-summary-row">
-    <span className="course-detail__inputs-summary-label">{label}</span>
-    <span className="course-detail__inputs-summary-value">{value}</span>
+  <div className="course-detail__inputs-summary-line">
+    <span className="course-detail__inputs-summary-line-label">{label}</span>
+    <span className="course-detail__inputs-summary-line-value">
+      {parts.map((part, i) => (
+        <span key={i}>
+          {i > 0 && <span aria-hidden="true"> · </span>}
+          {part}
+        </span>
+      ))}
+    </span>
   </div>
 )
 
@@ -44,6 +51,17 @@ const InputsSummary = ({
     input.included_resources.length === 0
       ? '(none)'
       : input.included_resources.map((r) => RESOURCE_LABELS[r]).join(', ')
+  const ragLine = `${ragServerDisplay} (k=${course.rag_top_k})`
+  const model = course.override_model || '(global default)'
+  const temp =
+    course.override_temperature !== null &&
+    course.override_temperature !== undefined
+      ? `temp ${course.override_temperature}`
+      : 'temp (default)'
+  const ctx = course.override_num_ctx
+    ? `${course.override_num_ctx} ctx`
+    : '(default) ctx'
+
   return (
     <section
       className="course-detail__inputs-summary"
@@ -51,70 +69,24 @@ const InputsSummary = ({
     >
       <h3 className="course-detail__inputs-summary-heading">Original inputs</h3>
 
-      <div className="course-detail__inputs-summary-group">
-        <div className="course-detail__inputs-summary-title">
-          Topic &amp; Audience
-        </div>
-        <SummaryRow label="Topic" value={input.topic} />
-        <SummaryRow
-          label="Audience age"
-          value={AGE_CATEGORY_LABELS[input.age_category]}
-        />
-        <SummaryRow
-          label="Current → target expertise"
-          value={`${input.current_expertise} → ${input.target_expertise}`}
-        />
-      </div>
-
-      <div className="course-detail__inputs-summary-group">
-        <div className="course-detail__inputs-summary-title">Course Length</div>
-        <SummaryRow
-          label="Hours"
-          value={`${input.hours_min} – ${input.hours_max} hours`}
-        />
-        <SummaryRow label="Resources" value={resources} />
-      </div>
-
-      <div className="course-detail__inputs-summary-group">
-        <div className="course-detail__inputs-summary-title">Optional Notes</div>
-        <SummaryRow
-          label="Learner context"
-          value={input.learner_context?.trim() || '(none provided)'}
-        />
-      </div>
-
-      <div className="course-detail__inputs-summary-group">
-        <div className="course-detail__inputs-summary-title">RAG Source</div>
-        <SummaryRow label="Server" value={ragServerDisplay} />
-        <SummaryRow label="Retrieval top_k" value={course.rag_top_k} />
-      </div>
-
-      <div className="course-detail__inputs-summary-group">
-        <div className="course-detail__inputs-summary-title">
-          Model Overrides
-        </div>
-        <SummaryRow
-          label="Model"
-          value={course.override_model || '(global default)'}
-        />
-        <SummaryRow
-          label="Temperature"
-          value={
-            course.override_temperature !== null &&
-            course.override_temperature !== undefined
-              ? course.override_temperature
-              : '(global default)'
-          }
-        />
-        <SummaryRow
-          label="Context window"
-          value={
-            course.override_num_ctx
-              ? `${course.override_num_ctx} tokens`
-              : '(global default)'
-          }
-        />
-      </div>
+      <SummaryLine
+        label="Topic"
+        parts={[
+          input.topic,
+          AGE_CATEGORY_LABELS[input.age_category],
+          `${input.current_expertise} → ${input.target_expertise}`,
+        ]}
+      />
+      <SummaryLine
+        label="Length"
+        parts={[`${input.hours_min}–${input.hours_max} hours`, resources]}
+      />
+      <SummaryLine
+        label="Context"
+        parts={[input.learner_context?.trim() || '(none provided)']}
+      />
+      <SummaryLine label="RAG" parts={[ragLine]} />
+      <SummaryLine label="Model" parts={[model, temp, ctx]} />
     </section>
   )
 }
@@ -292,6 +264,8 @@ export const CourseDetail = () => {
         }
       />
       <div className="course-detail__body">
+        <InputsSummary course={course} ragServerDisplay={ragServerDisplay} />
+
         {course.status === 'pending' && !isStreaming && (
           <div>
             <Button
@@ -337,10 +311,6 @@ export const CourseDetail = () => {
           !isStreaming && course.status !== 'pending' && (
             <p>No outline produced yet.</p>
           )
-        )}
-
-        {outline && (
-          <InputsSummary course={course} ragServerDisplay={ragServerDisplay} />
         )}
       </div>
     </div>

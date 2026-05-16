@@ -34,6 +34,13 @@
   /* Deliberately no margin: 0 auto — the body is left-aligned. */
 }
 
+/* Outline detail pane runs wider since it carries both the inputs banner
+ * and the (potentially dense) outline. Create form + list stay at 800px to
+ * stay aligned with AppSettings. */
+.course-detail__body {
+  max-width: 1200px;
+}
+
 /* -------- Sections + form fields ------------------------------------------- */
 
 .new-course__section,
@@ -314,53 +321,44 @@
   letter-spacing: 0.05em;
 }
 
-/* -------- Original inputs summary (bottom of detail page) ------------------ */
+/* -------- Original inputs summary (top of detail page) --------------------- */
 
 .course-detail__inputs-summary {
   background: var(--surf-1);
   border: 1px solid var(--border-subtle);
   border-radius: var(--r-md);
-  padding: var(--s-4) var(--s-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-4);
-}
-
-.course-detail__inputs-summary-heading {
-  font-size: var(--fs-body);
-  font-weight: var(--fw-semibold);
-  color: var(--on-surf-1);
-  margin: 0;
-}
-
-.course-detail__inputs-summary-group {
+  padding: var(--s-3) var(--s-4);
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
 }
 
-.course-detail__inputs-summary-title {
-  font-size: var(--fs-caption);
+.course-detail__inputs-summary-heading {
+  font-size: var(--fs-body-sm);
   font-weight: var(--fw-semibold);
-  color: var(--on-surf-2);
+  color: var(--on-surf-1);
+  margin: 0 0 var(--s-1) 0;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: var(--s-1);
 }
 
-.course-detail__inputs-summary-row {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) 2fr;
+.course-detail__inputs-summary-line {
+  display: flex;
+  align-items: baseline;
   gap: var(--s-3);
   font-size: var(--fs-body-sm);
-  align-items: baseline;
+  line-height: 1.5;
 }
 
-.course-detail__inputs-summary-label {
+.course-detail__inputs-summary-line-label {
+  flex: 0 0 80px;
   color: var(--on-surf-2);
+  font-weight: var(--fw-medium);
 }
 
-.course-detail__inputs-summary-value {
+.course-detail__inputs-summary-line-value {
+  flex: 1;
+  min-width: 0;
   color: var(--on-surf-0);
   word-break: break-word;
 }
