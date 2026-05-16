@@ -51,7 +51,9 @@ export const CourseDetail = () => {
   if (!course) {
     return (
       <div className="course-detail">
-        <LoadingSpinner />
+        <div className="course-detail__body">
+          <LoadingSpinner />
+        </div>
       </div>
     )
   }
@@ -119,7 +121,7 @@ export const CourseDetail = () => {
     isStreaming || gen.toolCalls.length > 0 || gen.researchChunks
 
   return (
-    <>
+    <div className="course-detail">
       <ViewHeader
         breadcrumb={
           <button
@@ -134,7 +136,7 @@ export const CourseDetail = () => {
             <input
               value={titleDraft}
               onChange={(e) => setTitleDraft(e.target.value)}
-              className="course-form__input"
+              className="new-course__input"
               style={{ minWidth: 320 }}
             />
           ) : (
@@ -176,7 +178,7 @@ export const CourseDetail = () => {
           </div>
         }
       />
-      <div className="course-detail">
+      <div className="course-detail__body">
         {course.status === 'pending' && !isStreaming && (
           <div>
             <Button
@@ -224,6 +226,6 @@ export const CourseDetail = () => {
           )
         )}
       </div>
-    </>
+    </div>
   )
 }

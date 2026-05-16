@@ -48,7 +48,7 @@ export const CourseList = () => {
   const loaded = useCourseStore((s) => s.loaded)
 
   return (
-    <>
+    <div className="course-list">
       <ViewHeader
         title="Courses"
         actions={
@@ -62,7 +62,7 @@ export const CourseList = () => {
           </Button>
         }
       />
-      <div className="course-list">
+      <div className="course-list__body">
         {loading && !loaded && <LoadingSpinner />}
         {loaded && courses.length === 0 && (
           <div className="course-list__empty">
@@ -77,6 +77,6 @@ export const CourseList = () => {
           />
         ))}
       </div>
-    </>
+    </div>
   )
 }

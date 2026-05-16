@@ -111,6 +111,9 @@ describe('NewCourseForm', () => {
       },
       outline: null,
       validation_errors: null,
+      override_model: null,
+      override_temperature: null,
+      override_num_ctx: null,
       model_used: null,
       created_at: '',
       updated_at: '',
@@ -137,10 +140,9 @@ describe('NewCourseForm', () => {
       </MemoryRouter>
     )
 
-    // Pick RAG server
-    const ragSelect = screen.getByRole('button', {
-      name: /Choose a RAG server/,
-    })
+    // Pick RAG server — the Select's accessible name is "RAG server"
+    // (aria-label takes precedence over placeholder)
+    const ragSelect = screen.getByRole('button', { name: 'RAG server' })
     await user.click(ragSelect)
     await user.click(
       screen.getByRole('option', { name: 'Simple Wiki (simplewiki)' })

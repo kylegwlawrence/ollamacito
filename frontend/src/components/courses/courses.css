@@ -1,30 +1,158 @@
-/* Course generator UI styles. */
+/* Course generator UI styles.
+ *
+ * Layout mirrors AppSettings (see AppSettings.css for the canonical template):
+ * - Outer shell: canvas-coloured, height 100%, overflow hidden (so each route
+ *   owns its own scroll inside the .app__main pane).
+ * - __body: flex 1, overflow-y auto, padding, max-width 800px, LEFT-aligned
+ *   (no margin: 0 auto).
+ * - Sections inside the body use the global .card utility (surf-1 background)
+ *   with an uppercase __section-title and AppSettings-style fields.
+ */
 
-/* Each top-level course page renders as <ViewHeader> + a body div. The
- * surrounding .app__main is overflow:hidden, so the body must claim the
- * remaining vertical space and scroll internally. */
+/* -------- Page shells ------------------------------------------------------ */
+
+.new-course,
 .course-list,
-.course-form,
 .course-detail {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--surf-0);
+  overflow: hidden;
 }
 
-.course-list {
-  padding: var(--s-6);
+.new-course__body,
+.course-list__body,
+.course-detail__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s-4) var(--s-6) var(--s-6);
   display: flex;
   flex-direction: column;
   gap: var(--s-4);
-  max-width: 960px;
-  margin: 0 auto;
-  width: 100%;
+  max-width: 800px;
+  /* Deliberately no margin: 0 auto — the body is left-aligned. */
 }
+
+/* -------- Sections + form fields ------------------------------------------- */
+
+.new-course__section,
+.course-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.new-course__section-title,
+.course-detail__section-title {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--on-surf-1);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.new-course__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.new-course__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-4);
+}
+
+.new-course__label {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--on-surf-1);
+}
+
+.new-course__input,
+.new-course__textarea {
+  height: var(--h-control);
+  padding: 0 var(--s-3);
+  background: var(--surf-0);
+  color: var(--on-surf-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-body-sm);
+  font-family: inherit;
+  transition: border-color var(--dur-fast) var(--ease-std);
+}
+
+.new-course__textarea {
+  height: auto;
+  min-height: 96px;
+  padding: var(--s-2) var(--s-3);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.new-course__input:focus,
+.new-course__textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand-tint);
+}
+
+.new-course__hint {
+  font-size: var(--fs-caption);
+  color: var(--on-surf-2);
+}
+
+.new-course__warning {
+  font-size: var(--fs-caption);
+  color: var(--warning);
+}
+
+.new-course__error {
+  font-size: var(--fs-caption);
+  color: var(--danger);
+}
+
+.new-course__resources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.new-course__resource-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-pill);
+  background: var(--surf-0);
+  color: var(--on-surf-1);
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--fs-body-sm);
+  font-family: inherit;
+}
+
+.new-course__resource-chip--on {
+  background: var(--brand-tint);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.new-course__actions {
+  display: flex;
+  gap: var(--s-3);
+  padding-top: var(--s-2);
+}
+
+/* -------- Course list ------------------------------------------------------ */
 
 .course-list__empty {
   padding: var(--s-8);
   text-align: center;
-  color: var(--on-surf-dim);
+  color: var(--on-surf-2);
 }
 
 .course-card {
@@ -34,10 +162,10 @@
   gap: var(--s-4);
   padding: var(--s-4) var(--s-5);
   background: var(--surf-1);
-  border: 1px solid var(--surf-2);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--r-md);
   cursor: pointer;
-  transition: background var(--dur-base) var(--ease-std);
+  transition: background var(--dur-fast) var(--ease-std);
 }
 
 .course-card:hover {
@@ -52,7 +180,7 @@
 
 .course-card__meta {
   font-size: var(--fs-caption);
-  color: var(--on-surf-dim);
+  color: var(--on-surf-2);
   display: flex;
   gap: var(--s-3);
 }
@@ -66,105 +194,13 @@
   color: var(--on-surf-1);
 }
 
-.course-status-badge--complete { background: var(--success); color: var(--on-brand); }
-.course-status-badge--needs_review { background: var(--warning); color: var(--on-brand); }
-.course-status-badge--failed { background: var(--danger); color: var(--on-brand); }
-.course-status-badge--generating { background: var(--brand-tint); color: var(--brand); }
-.course-status-badge--pending { background: var(--surf-3); color: var(--on-surf-2); }
+.course-status-badge--complete      { background: var(--success);    color: var(--on-brand); }
+.course-status-badge--needs_review  { background: var(--warning);    color: var(--on-brand); }
+.course-status-badge--failed        { background: var(--danger);     color: var(--on-brand); }
+.course-status-badge--generating    { background: var(--brand-tint); color: var(--brand); }
+.course-status-badge--pending       { background: var(--surf-3);     color: var(--on-surf-2); }
 
-.course-form {
-  padding: var(--s-6);
-  max-width: 720px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-5);
-}
-
-.course-form__row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--s-4);
-}
-
-.course-form__field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
-}
-
-.course-form__label {
-  font-size: var(--fs-body-sm);
-  font-weight: var(--fw-medium);
-  color: var(--on-surf-1);
-}
-
-.course-form__hint {
-  font-size: var(--fs-caption);
-  color: var(--on-surf-dim);
-}
-
-.course-form__input,
-.course-form__textarea {
-  background: var(--surf-1);
-  border: 1px solid var(--surf-3);
-  border-radius: var(--r-sm);
-  color: var(--on-surf-0);
-  padding: var(--s-2) var(--s-3);
-  font: inherit;
-}
-
-.course-form__textarea {
-  resize: vertical;
-  min-height: 88px;
-}
-
-.course-form__resources {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-3);
-}
-
-.course-form__resource-chip {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  padding: var(--s-1) var(--s-3);
-  border: 1px solid var(--surf-3);
-  border-radius: var(--r-pill);
-  background: var(--surf-1);
-  cursor: pointer;
-  user-select: none;
-}
-
-.course-form__resource-chip--on {
-  background: var(--brand-tint);
-  border-color: var(--brand);
-  color: var(--brand);
-}
-
-.course-form__warning {
-  background: var(--warning);
-  color: var(--on-brand);
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-sm);
-}
-
-.course-form__error {
-  background: var(--danger-tint);
-  color: var(--danger);
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-sm);
-}
-
-.course-detail {
-  padding: var(--s-6);
-  max-width: 960px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-5);
-}
+/* -------- Course detail ---------------------------------------------------- */
 
 .course-detail__banner {
   padding: var(--s-3) var(--s-4);
@@ -187,6 +223,8 @@
   flex-wrap: wrap;
 }
 
+/* -------- Outline renderer ------------------------------------------------- */
+
 .outline {
   display: flex;
   flex-direction: column;
@@ -195,12 +233,14 @@
 
 .outline__hero {
   background: var(--surf-1);
+  border: 1px solid var(--border-subtle);
   padding: var(--s-5);
   border-radius: var(--r-md);
 }
 
 .outline__module {
   background: var(--surf-1);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--r-md);
   padding: var(--s-4) var(--s-5);
 }
@@ -274,8 +314,11 @@
   letter-spacing: 0.05em;
 }
 
+/* -------- Research trace --------------------------------------------------- */
+
 .research-trace {
   background: var(--surf-1);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--r-md);
   padding: var(--s-3) var(--s-4);
   font-family: var(--font-mono, monospace);
@@ -311,7 +354,7 @@
 
 .research-trace__notes {
   margin-top: var(--s-3);
-  color: var(--on-surf-dim);
+  color: var(--on-surf-2);
   white-space: pre-wrap;
   max-height: 200px;
   overflow: auto;
