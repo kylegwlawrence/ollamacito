@@ -389,6 +389,15 @@
   font-weight: var(--fw-medium);
 }
 
+.research-trace__timer {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  color: var(--on-surf-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 .research-trace__tools {
   margin-top: var(--s-3);
   display: flex;

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Icon } from '../common/Icon'
 import type { GenerationPhase, ResearchToolTrace } from '@/hooks/useCourseGeneration'
 import './courses.css'
@@ -20,6 +20,15 @@ const PHASE_LABEL: Record<GenerationPhase, string> = {
 const friendlyToolName = (n: string) =>
   n === 'search_wikipedia' ? 'Searched Wikipedia' : n
 
+const formatElapsed = (ms: number): string => {
+  const total = Math.max(0, Math.round(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
+}
+
 const summarizeInput = (input: Record<string, unknown>): string => {
   const q = input?.query
   if (typeof q === 'string' && q.trim()) return `"${q.trim()}"`
@@ -37,8 +46,33 @@ export const ResearchTrace = ({
 }: ResearchTraceProps) => {
   const isStreaming = phase === 'research' || phase === 'assembling'
   const [expanded, setExpanded] = useState(isStreaming)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [endedAt, setEndedAt] = useState<number | null>(null)
+  const [, forceTick] = useState(0)
+
+  useEffect(() => {
+    if (isStreaming) {
+      setStartedAt(Date.now())
+      setEndedAt(null)
+    }
+  }, [isStreaming])
+
+  useEffect(() => {
+    if (!isStreaming && startedAt && !endedAt) {
+      setEndedAt(Date.now())
+    }
+  }, [isStreaming, startedAt, endedAt])
+
+  useEffect(() => {
+    if (!isStreaming) return
+    const id = setInterval(() => forceTick((t) => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [isStreaming])
 
   if (toolCalls.length === 0 && !notes && phase === 'idle') return null
+
+  const elapsedMs =
+    startedAt !== null ? (endedAt ?? Date.now()) - startedAt : null
 
   return (
     <div className="research-trace">
@@ -58,6 +92,20 @@ export const ResearchTrace = ({
             ? '1 tool call'
             : `${toolCalls.length} tool calls`}
         </span>
+        {elapsedMs !== null && (
+          <span
+            className="research-trace__timer"
+            aria-live={isStreaming ? 'polite' : 'off'}
+            aria-label={
+              isStreaming
+                ? `Elapsed time ${formatElapsed(elapsedMs)}`
+                : `Completed in ${formatElapsed(elapsedMs)}`
+            }
+          >
+            <Icon name="timer" size={16} />
+            {formatElapsed(elapsedMs)}
+          </span>
+        )}
       </div>
       {expanded && (
         <>
