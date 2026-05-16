@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import type { Chat } from '@/types'
-import { useModels } from '@/hooks/useModels'
 import { Icon } from '../common/Icon'
-import { Select } from '../common/Select'
 import './ChatItem.css'
 
 interface ChatItemProps {
@@ -10,14 +8,11 @@ interface ChatItemProps {
   isActive: boolean
   onSelect: (chat: Chat) => void
   onRename: (chatId: string, newTitle: string) => Promise<void>
-  onChangeModel: (chatId: string, newModel: string) => Promise<void>
   onDelete: (chatId: string) => Promise<void>
 }
 
-export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, onDelete }: ChatItemProps) => {
-  const { models } = useModels()
+export const ChatItem = ({ chat, isActive, onSelect, onRename, onDelete }: ChatItemProps) => {
   const [isEditing, setIsEditing] = useState(false)
-  const [isSelectingModel, setIsSelectingModel] = useState(false)
   const [editTitle, setEditTitle] = useState(chat.title)
 
   const handleRename = async () => {
@@ -37,28 +32,19 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
     }
   }
 
-  const handleModelChange = async (newModel: string) => {
-    if (newModel !== chat.model) {
-      await onChangeModel(chat.id, newModel)
-    }
-    setIsSelectingModel(false)
-  }
-
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation()
     await onDelete(chat.id)
   }
 
-  const modelOptions = models.map((m) => ({ value: m.name, label: m.name }))
-
   return (
     <div
       className={`chat-item ${isActive ? 'chat-item--active' : ''}`}
-      onClick={() => !isEditing && !isSelectingModel && onSelect(chat)}
+      onClick={() => !isEditing && onSelect(chat)}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
-        if (!isEditing && !isSelectingModel && (e.key === 'Enter' || e.key === ' ')) {
+        if (!isEditing && (e.key === 'Enter' || e.key === ' ')) {
           e.preventDefault()
           onSelect(chat)
         }
@@ -78,16 +64,6 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
           onClick={(e) => e.stopPropagation()}
           aria-label="Edit chat title"
         />
-      ) : isSelectingModel ? (
-        <div className="chat-item__model-select" onClick={(e) => e.stopPropagation()}>
-          <Select
-            value={chat.model}
-            onChange={handleModelChange}
-            options={modelOptions}
-            aria-label="Select model for chat"
-            onClose={() => setIsSelectingModel(false)}
-          />
-        </div>
       ) : (
         <>
           <div
@@ -100,16 +76,9 @@ export const ChatItem = ({ chat, isActive, onSelect, onRename, onChangeModel, on
             {chat.title}
           </div>
           <div className="chat-item__footer">
-            <button
-              className="chat-item__model-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                setIsSelectingModel(true)
-              }}
-              aria-label={`Change model, currently ${chat.model}`}
-            >
+            <span className="chat-item__model" title={chat.model}>
               {chat.model}
-            </button>
+            </span>
             <div className="chat-item__actions">
               <button
                 className="icon-btn chat-item__edit"

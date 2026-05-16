@@ -220,15 +220,6 @@ export const ProjectDetail = () => {
     }
   }
 
-  const handleChangeModel = async (chatId: string, newModel: string) => {
-    const updatedChat = await updateChat(chatId, { model: newModel })
-    if (updatedChat) {
-      setProjectChats((prev) =>
-        prev.map((chat) => (chat.id === chatId ? updatedChat : chat))
-      )
-    }
-  }
-
   const handleDeleteChat = async (chatId: string) => {
     const ok = await confirm({
       title: 'Delete this chat?',
@@ -484,7 +475,6 @@ export const ProjectDetail = () => {
                   isActive={false}
                   onSelect={handleSelectChat}
                   onRename={handleRenameChat}
-                  onChangeModel={handleChangeModel}
                   onDelete={handleDeleteChat}
                 />
               ))

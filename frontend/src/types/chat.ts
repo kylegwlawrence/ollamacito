@@ -21,7 +21,6 @@ export interface ChatCreate {
 
 export interface ChatUpdate {
   title?: string
-  model?: string
   is_archived?: boolean
   agent_mode_enabled?: boolean
 }

@@ -41,7 +41,7 @@ export const useChats = () => {
     }
   }, [])
 
-  const updateChat = useCallback(async (chatId: string, updates: { title?: string; model?: string }): Promise<Chat | null> => {
+  const updateChat = useCallback(async (chatId: string, updates: { title?: string }): Promise<Chat | null> => {
     try {
       const updatedChat = await chatApi.update(chatId, updates)
       setChats((prev) =>

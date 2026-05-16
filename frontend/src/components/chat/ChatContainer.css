@@ -91,3 +91,11 @@
   background: var(--brand-tint);
   color: var(--brand);
 }
+
+.chat-container__model-label {
+  font-size: var(--fs-body-sm);
+  color: var(--on-surf-2);
+  font-family: 'Roboto Mono', monospace;
+  white-space: nowrap;
+  padding: 0 var(--s-2);
+}

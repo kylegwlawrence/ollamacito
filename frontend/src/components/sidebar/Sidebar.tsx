@@ -64,13 +64,6 @@ export const Sidebar = () => {
     }
   }
 
-  const handleChangeModel = async (chatId: string, newModel: string) => {
-    const updatedChat = await updateChat(chatId, { model: newModel })
-    if (updatedChat && currentChat?.id === chatId) {
-      setCurrentChat(updatedChat)
-    }
-  }
-
   const handleDelete = async (chatId: string) => {
     const ok = await confirm({
       title: 'Delete this chat?',
@@ -319,7 +312,6 @@ export const Sidebar = () => {
                   isActive={currentChat?.id === chat.id}
                   onSelect={handleSelectChat}
                   onRename={handleRename}
-                  onChangeModel={handleChangeModel}
                   onDelete={handleDelete}
                 />
               ))}

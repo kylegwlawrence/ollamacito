@@ -5,13 +5,11 @@ import { MessageInput } from './MessageInput'
 import { useChatStore } from '@/stores/chatStore'
 import { useProjectsStore } from '@/stores/projectsStore'
 import { useStreaming } from '@/hooks/useStreaming'
-import { useModels } from '@/hooks/useModels'
 import { chatApi } from '@/services/chatApi'
 import { getErrorMessage } from '@/utils/errorHandler'
 import type { Project } from '@/types/project'
 import { ViewHeader } from '../common/ViewHeader'
 import { Icon } from '../common/Icon'
-import { Select } from '../common/Select'
 import './ChatContainer.css'
 
 const projectHasFullRagConfig = (project: Project | null | undefined): boolean =>
@@ -46,7 +44,6 @@ export const ChatContainer = () => {
   const isStreamingThisChat =
     streaming.isStreaming && streaming.activeChatId === currentChat?.id
 
-  const { models } = useModels()
   const [togglingAgent, setTogglingAgent] = useState(false)
   const agentToggleAvailable = projectHasFullRagConfig(chatProject)
 
@@ -140,16 +137,6 @@ export const ChatContainer = () => {
     }
   }
 
-  const handleChangeModel = async (newModel: string) => {
-    if (!currentChat || newModel === currentChat.model) return
-    try {
-      const updated = await chatApi.update(currentChat.id, { model: newModel })
-      setCurrentChat({ ...currentChat, ...updated })
-    } catch (err) {
-      console.error('Failed to change model:', getErrorMessage(err, 'unknown error'))
-    }
-  }
-
   if (!currentChat) {
     return (
       <main className="chat-container chat-container--empty" role="main" aria-label="Chat area">
@@ -166,8 +153,6 @@ export const ChatContainer = () => {
       ? 'Disable agent mode (model can call search_wikipedia)'
       : 'Enable agent mode (let the model search Wikipedia on its own)'
     : 'Agent mode requires the chat’s project to have RAG configured'
-
-  const modelOptions = models.map((m) => ({ value: m.name, label: m.name }))
 
   return (
     <main className="chat-container" role="main" aria-label="Chat conversation">
@@ -200,12 +185,12 @@ export const ChatContainer = () => {
               <Icon name="auto_awesome" size={16} />
               {currentChat.agent_mode_enabled ? 'Agent on' : 'Agent'}
             </button>
-            <Select
-              value={currentChat.model}
-              onChange={handleChangeModel}
-              options={modelOptions}
-              aria-label="Change model for this chat"
-            />
+            <span
+              className="chat-container__model-label"
+              title={currentChat.model}
+            >
+              {currentChat.model}
+            </span>
           </div>
         }
       />
