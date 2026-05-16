@@ -1,16 +1,123 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useCourseGeneration } from '@/hooks/useCourseGeneration'
 import { useConfirmStore } from '@/stores/confirmStore'
 import { useCourseStore } from '@/stores/courseStore'
+import { useRagServersStore } from '@/stores/ragServersStore'
 import { useToastStore } from '@/stores/toastStore'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ViewHeader } from '../common/ViewHeader'
 import { OutlineRenderer } from './OutlineRenderer'
 import { ResearchTrace } from './ResearchTrace'
-import type { CourseOutline, ValidationErrorEntry } from '@/types'
+import {
+  AGE_CATEGORY_LABELS,
+  RESOURCE_LABELS,
+  type Course,
+  type CourseOutline,
+  type ValidationErrorEntry,
+} from '@/types'
 import './courses.css'
+
+const SummaryRow = ({
+  label,
+  value,
+}: {
+  label: string
+  value: ReactNode
+}) => (
+  <div className="course-detail__inputs-summary-row">
+    <span className="course-detail__inputs-summary-label">{label}</span>
+    <span className="course-detail__inputs-summary-value">{value}</span>
+  </div>
+)
+
+const InputsSummary = ({
+  course,
+  ragServerDisplay,
+}: {
+  course: Course
+  ragServerDisplay: string
+}) => {
+  const { input } = course
+  const resources =
+    input.included_resources.length === 0
+      ? '(none)'
+      : input.included_resources.map((r) => RESOURCE_LABELS[r]).join(', ')
+  return (
+    <section
+      className="course-detail__inputs-summary"
+      aria-label="Original course inputs"
+    >
+      <h3 className="course-detail__inputs-summary-heading">Original inputs</h3>
+
+      <div className="course-detail__inputs-summary-group">
+        <div className="course-detail__inputs-summary-title">
+          Topic &amp; Audience
+        </div>
+        <SummaryRow label="Topic" value={input.topic} />
+        <SummaryRow
+          label="Audience age"
+          value={AGE_CATEGORY_LABELS[input.age_category]}
+        />
+        <SummaryRow
+          label="Current → target expertise"
+          value={`${input.current_expertise} → ${input.target_expertise}`}
+        />
+      </div>
+
+      <div className="course-detail__inputs-summary-group">
+        <div className="course-detail__inputs-summary-title">Course Length</div>
+        <SummaryRow
+          label="Hours"
+          value={`${input.hours_min} – ${input.hours_max} hours`}
+        />
+        <SummaryRow label="Resources" value={resources} />
+      </div>
+
+      <div className="course-detail__inputs-summary-group">
+        <div className="course-detail__inputs-summary-title">Optional Notes</div>
+        <SummaryRow
+          label="Learner context"
+          value={input.learner_context?.trim() || '(none provided)'}
+        />
+      </div>
+
+      <div className="course-detail__inputs-summary-group">
+        <div className="course-detail__inputs-summary-title">RAG Source</div>
+        <SummaryRow label="Server" value={ragServerDisplay} />
+        <SummaryRow label="Retrieval top_k" value={course.rag_top_k} />
+      </div>
+
+      <div className="course-detail__inputs-summary-group">
+        <div className="course-detail__inputs-summary-title">
+          Model Overrides
+        </div>
+        <SummaryRow
+          label="Model"
+          value={course.override_model || '(global default)'}
+        />
+        <SummaryRow
+          label="Temperature"
+          value={
+            course.override_temperature !== null &&
+            course.override_temperature !== undefined
+              ? course.override_temperature
+              : '(global default)'
+          }
+        />
+        <SummaryRow
+          label="Context window"
+          value={
+            course.override_num_ctx
+              ? `${course.override_num_ctx} tokens`
+              : '(global default)'
+          }
+        />
+      </div>
+    </section>
+  )
+}
 
 export const CourseDetail = () => {
   const { courseId } = useParams<{ courseId: string }>()
@@ -26,6 +133,7 @@ export const CourseDetail = () => {
   const removeCourse = useCourseStore((s) => s.removeCourse)
   const showToast = useToastStore((s) => s.showToast)
   const confirm = useConfirmStore((s) => s.ask)
+  const ragServers = useRagServersStore((s) => s.servers)
 
   const gen = useCourseGeneration()
 
@@ -119,6 +227,11 @@ export const CourseDetail = () => {
   const isStreaming = gen.isStreaming
   const showResearchTrace =
     isStreaming || gen.toolCalls.length > 0 || gen.researchChunks
+
+  const ragServer = ragServers.find((s) => s.id === course.rag_server_id)
+  const ragServerDisplay = ragServer
+    ? `${ragServer.name} (${ragServer.corpus_id})`
+    : course.rag_server_id
 
   return (
     <div className="course-detail">
@@ -224,6 +337,10 @@ export const CourseDetail = () => {
           !isStreaming && course.status !== 'pending' && (
             <p>No outline produced yet.</p>
           )
+        )}
+
+        {outline && (
+          <InputsSummary course={course} ragServerDisplay={ragServerDisplay} />
         )}
       </div>
     </div>
