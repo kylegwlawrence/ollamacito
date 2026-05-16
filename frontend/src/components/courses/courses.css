@@ -215,8 +215,10 @@
 }
 
 .course-detail__banner--warn {
-  background: var(--warning);
-  color: var(--on-brand);
+  background: var(--surf-1);
+  color: var(--on-surf-1);
+  border: 2px solid #EAB308;
+  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.18);
 }
 
 .course-detail__banner--error {
