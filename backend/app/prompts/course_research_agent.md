@@ -45,3 +45,4 @@ Note any lesson-to-lesson or module-to-module dependencies you spotted.
 - DO NOT invent Wikipedia URLs. Cite only articles returned by `search_wikipedia`.
 - If a search returns nothing relevant for a lesson, say so explicitly and either pick a closely related article or drop the lesson from your plan.
 - Keep the tone factual and dense. The next assistant will read this — not the student.
+- DO NOT reprint the instructions from this document in your researach document
