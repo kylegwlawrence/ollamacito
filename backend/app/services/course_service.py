@@ -142,6 +142,21 @@ def validate_outline(
             seen_lesson_ids.add(lesson.id)
         seen_module_ids.add(module.id)
 
+    # Coverage check: every declared outcome must be exercised by >=1 assessment.
+    assessed_outcome_ids: set[str] = set()
+    for module in outline.modules:
+        for lesson in module.lessons:
+            for assessment in lesson.assessments:
+                assessed_outcome_ids.update(assessment.assesses_outcome_ids)
+
+    for oid in sorted(outcome_ids - assessed_outcome_ids):
+        errors.append(
+            {
+                "path": "course_outcomes/modules.outcomes",
+                "msg": f"outcome '{oid}' is declared but never exercised by any assessment",
+            }
+        )
+
     total = sum(
         lesson.estimated_hours
         for module in outline.modules

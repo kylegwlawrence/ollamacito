@@ -109,7 +109,7 @@ def _valid_outline_dict() -> Dict[str, Any]:
                                 "id": "asm-1-1-1",
                                 "type": "quiz",
                                 "prompt": "Match each input to its output.",
-                                "assesses_outcome_ids": ["out-c-1"],
+                                "assesses_outcome_ids": ["out-c-1", "out-m-1-1"],
                             }
                         ],
                     }
@@ -142,7 +142,14 @@ def _valid_outline_dict() -> Dict[str, Any]:
                         ],
                         "prerequisite_ids": ["mod-1"],
                         "readings": [],
-                        "assessments": [],
+                        "assessments": [
+                            {
+                                "id": "asm-2-1-1",
+                                "type": "quiz",
+                                "prompt": "Explain in one sentence why plants matter to animals.",
+                                "assesses_outcome_ids": ["out-m-2-1"],
+                            }
+                        ],
                     }
                 ],
             },
@@ -778,6 +785,18 @@ class TestValidator:
             CourseOutline.model_validate(outline_dict), self._request()
         )
         assert any("out-c-999" in e["msg"] for e in errors)
+
+    def test_flags_orphan_outcome_never_assessed(self) -> None:
+        outline_dict = _valid_outline_dict()
+        # Drop the assessment that covers out-m-2-1, making it an orphan.
+        outline_dict["modules"][1]["lessons"][0]["assessments"] = []
+        errors = course_service.validate_outline(
+            CourseOutline.model_validate(outline_dict), self._request()
+        )
+        assert any(
+            "out-m-2-1" in e["msg"] and "never exercised" in e["msg"]
+            for e in errors
+        )
 
     def test_flags_hours_out_of_range(self) -> None:
         # Request says 4-6h, outline above sums to 5h. Build a request with a
