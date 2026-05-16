@@ -185,8 +185,6 @@ async def update_chat(
     """Update a chat (ownership enforced by dep)."""
     if chat_data.title is not None:
         chat.title = chat_data.title
-    if chat_data.model is not None:
-        chat.model = chat_data.model
     if chat_data.is_archived is not None:
         chat.is_archived = chat_data.is_archived
     if chat_data.agent_mode_enabled is not None:

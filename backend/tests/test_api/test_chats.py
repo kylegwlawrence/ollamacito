@@ -73,7 +73,7 @@ async def test_get_chat_returns_messages(async_client: httpx.AsyncClient) -> Non
 
 
 @pytest.mark.asyncio
-async def test_update_chat_changes_title_and_model(
+async def test_update_chat_changes_title(
     async_client: httpx.AsyncClient,
 ) -> None:
     r = await async_client.post(
@@ -84,11 +84,36 @@ async def test_update_chat_changes_title_and_model(
         patched = (
             await async_client.patch(
                 f"/api/v1/chats/{cid}",
-                json={"title": "new", "model": "new:7b"},
+                json={"title": "new"},
             )
         ).json()
         assert patched["title"] == "new"
-        assert patched["model"] == "new:7b"
+        # Model is fixed at creation; it cannot be changed.
+        assert patched["model"] == "old:1b"
+    finally:
+        await async_client.delete(f"/api/v1/chats/{cid}")
+
+
+@pytest.mark.asyncio
+async def test_update_chat_rejects_model_change(
+    async_client: httpx.AsyncClient,
+) -> None:
+    """Once a chat is created, its model is locked. Supplying `model` in
+    a PATCH must be rejected (422) and the stored model must be unchanged."""
+    r = await async_client.post(
+        "/api/v1/chats", json={"title": "old", "model": "old:1b"}
+    )
+    cid = r.json()["id"]
+    try:
+        rejected = await async_client.patch(
+            f"/api/v1/chats/{cid}",
+            json={"model": "new:7b"},
+        )
+        assert rejected.status_code == 422, rejected.text
+
+        # And the stored model is unchanged.
+        got = (await async_client.get(f"/api/v1/chats/{cid}")).json()
+        assert got["model"] == "old:1b"
     finally:
         await async_client.delete(f"/api/v1/chats/{cid}")
 

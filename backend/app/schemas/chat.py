@@ -30,10 +30,16 @@ class ChatCreate(ChatBase):
 
 
 class ChatUpdate(BaseModel):
-    """Schema for updating a chat."""
+    """Schema for updating a chat.
+
+    `model` is intentionally not updatable: a chat's model is fixed at
+    creation time. Supplying `model` (or any unknown key) is rejected
+    via `extra="forbid"`.
+    """
+
+    model_config = {"extra": "forbid"}
 
     title: Optional[str] = Field(None, min_length=1, max_length=255)
-    model: Optional[str] = Field(None, min_length=1, max_length=100)
     is_archived: Optional[bool] = None
     agent_mode_enabled: Optional[bool] = None
 
