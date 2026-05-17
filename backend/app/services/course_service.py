@@ -44,6 +44,12 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
+# Hard floor for tool calls during the research phase. The research agent will
+# be re-prompted to continue until it has made at least this many
+# search_wikipedia calls, regardless of when it tries to bail.
+RESEARCH_MIN_TOOL_CALLS = 3
+
+
 _AGE_DESCRIPTIONS: Dict[AgeCategory, str] = {
     AgeCategory.PRIMARY: "primary school student (grade 1-3)",
     AgeCategory.ELEMENTARY: "elementary school student (grade 4-7)",
@@ -232,6 +238,7 @@ async def _run_research_phase(
         is_disconnected=is_disconnected,
         max_iters=8,  # research benefits from a bit more headroom than chat agent
         system_prompt=system_prompt,
+        min_tool_calls=RESEARCH_MIN_TOOL_CALLS,
     ):
         yield frame
         if frame.get("type") == "error":

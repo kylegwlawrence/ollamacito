@@ -181,6 +181,7 @@ def _patch_run_agent(
         is_disconnected: Any,
         max_iters: int = 5,
         system_prompt: Optional[str] = None,
+        min_tool_calls: int = 0,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         if error is not None:
             result.error = error

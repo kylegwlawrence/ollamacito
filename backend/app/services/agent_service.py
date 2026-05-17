@@ -266,6 +266,7 @@ async def run_agent(
     is_disconnected: Callable[[], Awaitable[bool]],
     max_iters: int = 5,
     system_prompt: Optional[str] = None,
+    min_tool_calls: int = 0,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Drive the agent loop and yield NDJSON frame dicts for the endpoint to
@@ -281,6 +282,12 @@ async def run_agent(
     `rag_server` + `rag_top_k` are passed directly rather than through a
     Project wrapper so both the chat agent (project-scoped) and the course
     generator (standalone) can share this loop.
+
+    `min_tool_calls` forces the loop to keep researching until the model has
+    made at least this many tool calls. If the model tries to emit a final
+    answer before the floor is met, the loop discards that draft, appends a
+    user-role reminder, and continues. `max_iters` is still the hard upper
+    bound so resistant models eventually exit.
     """
     # Pre-flight: fetch /rag/info to get article_url_template for citations.
     if rag_server is None:
@@ -311,6 +318,7 @@ async def run_agent(
     aggregated_hits: List[Dict[str, Any]] = []
     used_dense_any = False
     accumulated_text: List[str] = []
+    total_tool_calls = 0
 
     def _commit_citations() -> None:
         result.rag_citations = _build_citations(
@@ -396,10 +404,10 @@ async def run_agent(
             return
 
         if not turn_tool_calls:
-            # If the model emitted NEITHER tool_calls NOR content this turn,
-            # fall back to one tool-free streaming call. Some tool-aware models
-            # emit an empty turn when given tools but answer normally when
-            # tools are absent — this preserves the prior code's safety net.
+            # Case 1: empty turn (no tool_calls AND no content). Some
+            # tool-aware models emit an empty turn when given tools but
+            # answer normally when tools are absent — fall back to one
+            # tool-free streaming call. After that, exit.
             if not turn_content_parts:
                 try:
                     fallback_stream = await ollama_service.client.chat(
@@ -427,6 +435,39 @@ async def run_agent(
                     yield {"type": "error", "message": err}
                     return
 
+                result.final_content = "".join(accumulated_text)
+                _commit_citations()
+                yield {"type": "done", "truncated": result.truncated}
+                return
+
+            # Case 2: model emitted content but no tool_calls — it wants to
+            # bail. If min_tool_calls hasn't been met yet (and we still have
+            # iterations left), discard the bail draft, log the prior
+            # assistant turn, and append a user-role reminder for the next
+            # round. Otherwise, exit normally.
+            if total_tool_calls < min_tool_calls and iter_idx + 1 < max_iters:
+                accumulated_text.clear()
+                result.final_content = ""
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": "".join(turn_content_parts),
+                    }
+                )
+                remaining = min_tool_calls - total_tool_calls
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"You have made {total_tool_calls} search_wikipedia "
+                            f"call(s) so far. Continue researching the remaining "
+                            f"lessons before summarizing — call the tool at least "
+                            f"{remaining} more time(s)."
+                        ),
+                    }
+                )
+                continue
+
             result.final_content = "".join(accumulated_text)
             _commit_citations()
             yield {"type": "done", "truncated": result.truncated}
@@ -441,6 +482,7 @@ async def run_agent(
                 "tool_calls": turn_tool_calls,
             }
         )
+        total_tool_calls += len(turn_tool_calls)
 
         for tc in turn_tool_calls:
             tc_id = uuid_lib.uuid4().hex[:12]

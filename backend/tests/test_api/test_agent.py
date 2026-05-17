@@ -616,3 +616,115 @@ async def test_streams_content_then_tool_call_in_same_turn(
         assert len(assistant.tool_calls) == 1
     finally:
         await async_client.delete(f"/api/v1/projects/{project_id}")
+
+
+@pytest.mark.asyncio
+async def test_min_tool_calls_reprompts_when_model_tries_to_bail_early(
+    fake_rag: FakeRag,
+    fake_agent: FakeAgentStream,
+) -> None:
+    """With min_tool_calls=3, a content-only turn fired after one tool call
+    should not exit the loop — the agent should append a reminder and keep
+    going until the floor is met."""
+    from app.db.models import RagServer
+    from app.services.agent_service import AgentRunResult, run_agent
+
+    fake_rag.hits = [_hit("Stub", None, "stub text")]
+    fake_agent.turn_scripts = [
+        [_tool_call_chunk("first query")],          # turn 1: 1 tool call
+        [{"content": "Premature summary draft."}],  # turn 2: tries to bail (1 < 3)
+        [_tool_call_chunk("second query")],         # turn 3: re-prompted, calls tool
+        [_tool_call_chunk("third query")],          # turn 4: 3rd tool call, floor met
+        [{"content": "Real research summary."}],    # turn 5: exits cleanly
+    ]
+
+    rag_server = RagServer(
+        id=uuid4(),
+        user_id=uuid4(),
+        name="t",
+        url="http://rag.local:8001",
+        corpus_id="simplewiki",
+    )
+    result = AgentRunResult()
+
+    async def never_disconnected() -> bool:
+        return False
+
+    frames: List[Dict[str, Any]] = []
+    async for frame in run_agent(
+        model="x:1b",
+        initial_messages=[{"role": "user", "content": "Research and plan the course."}],
+        options={"temperature": 0.2, "num_ctx": 8192},
+        rag_server=rag_server,
+        rag_top_k=3,
+        result=result,
+        is_disconnected=never_disconnected,
+        max_iters=8,
+        system_prompt="You are a curriculum researcher.",
+        min_tool_calls=3,
+    ):
+        frames.append(frame)
+
+    # 5 scripted turns means 5 chat calls.
+    assert len(fake_agent.calls) == 5
+    # 3 tool calls dispatched to the RAG service.
+    assert len(fake_rag.retrieve_calls) == 3
+    assert [c["query"] for c in fake_rag.retrieve_calls] == [
+        "first query",
+        "second query",
+        "third query",
+    ]
+    # The bail draft was discarded; only the final summary persists.
+    assert result.final_content == "Real research summary."
+    assert "Premature summary draft." not in result.final_content
+    # Loop ended via the normal done path.
+    assert frames[-1]["type"] == "done"
+    assert frames[-1]["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_min_tool_calls_zero_preserves_default_exit_behavior(
+    fake_rag: FakeRag,
+    fake_agent: FakeAgentStream,
+) -> None:
+    """Regression: min_tool_calls=0 (the default) means a content-only turn
+    after any tool count exits immediately — same as before this feature."""
+    from app.db.models import RagServer
+    from app.services.agent_service import AgentRunResult, run_agent
+
+    fake_rag.hits = [_hit("Stub", None, "stub text")]
+    fake_agent.turn_scripts = [
+        [_tool_call_chunk("only query")],
+        [{"content": "Done."}],
+    ]
+
+    rag_server = RagServer(
+        id=uuid4(),
+        user_id=uuid4(),
+        name="t",
+        url="http://rag.local:8001",
+        corpus_id="simplewiki",
+    )
+    result = AgentRunResult()
+
+    async def never_disconnected() -> bool:
+        return False
+
+    frames: List[Dict[str, Any]] = []
+    async for frame in run_agent(
+        model="x:1b",
+        initial_messages=[{"role": "user", "content": "hi"}],
+        options=None,
+        rag_server=rag_server,
+        rag_top_k=3,
+        result=result,
+        is_disconnected=never_disconnected,
+        max_iters=8,
+        system_prompt=None,
+    ):
+        frames.append(frame)
+
+    assert len(fake_agent.calls) == 2
+    assert len(fake_rag.retrieve_calls) == 1
+    assert result.final_content == "Done."
+    assert frames[-1]["type"] == "done"
