@@ -17,19 +17,52 @@ from tests.conftest import FakeRag
 
 
 @pytest.fixture(autouse=True)
-async def _wipe_rag_servers():
-    """Each test starts with a clean slate of RAG servers for the default user."""
+async def _isolate_rag_servers():
+    """Give each test a clean slate of RAG servers WITHOUT destroying dev data.
+
+    Tests still hit the shared dev DB (see conftest.py), so a blanket
+    DELETE wiped the developer's actual RAG servers every time the suite
+    ran. Now we snapshot the default user's existing rows, wipe for the
+    duration of the test, then restore them on teardown.
+
+    Caveat: if a Course (FK ON DELETE RESTRICT) references one of the
+    pre-existing rag_servers, the initial wipe raises and the test
+    fails loudly — same behavior as before, but with the snapshot
+    intact so nothing is lost. See docs/TEST_DB_SEPARATION_PLAN.md for
+    the proper fix (separate test database).
+    """
     async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(RagServer).where(RagServer.user_id == DEFAULT_USER_ID)
+        )
+        snapshot = [
+            {
+                "id": r.id,
+                "user_id": r.user_id,
+                "name": r.name,
+                "url": r.url,
+                "corpus_id": r.corpus_id,
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+            }
+            for r in result.scalars()
+        ]
         await session.execute(
             delete(RagServer).where(RagServer.user_id == DEFAULT_USER_ID)
         )
         await session.commit()
-    yield
-    async with AsyncSessionLocal() as session:
-        await session.execute(
-            delete(RagServer).where(RagServer.user_id == DEFAULT_USER_ID)
-        )
-        await session.commit()
+
+    try:
+        yield
+    finally:
+        async with AsyncSessionLocal() as session:
+            # Drop anything the test created, then restore the snapshot.
+            await session.execute(
+                delete(RagServer).where(RagServer.user_id == DEFAULT_USER_ID)
+            )
+            for row in snapshot:
+                session.add(RagServer(**row))
+            await session.commit()
 
 
 # ---------- CRUD ----------
