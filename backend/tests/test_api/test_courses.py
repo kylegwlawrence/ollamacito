@@ -806,3 +806,84 @@ class TestValidator:
         )
         errors = course_service.validate_outline(self._outline(), request)
         assert any("not in" in e["msg"] for e in errors)
+
+
+class TestMarkdown:
+    def test_renderer_produces_expected_sections(self) -> None:
+        from app.services.course_markdown import outline_to_markdown
+
+        outline = CourseOutline.model_validate(_valid_outline_dict())
+        md = outline_to_markdown(outline)
+
+        assert md.startswith("# Photosynthesis 101")
+        assert "**Audience:** Elementary school students (grade 4-7)" in md
+        assert "## Course outcomes" in md
+        assert "## Module 1: What is photosynthesis?" in md
+        assert "## Module 2: Why it matters" in md
+        assert "### Lesson 1.1: Inputs and outputs" in md
+        assert "### Lesson 2.1: Food chains" in md
+        # Bloom level prefixed on objectives and outcomes.
+        assert "_remember_: List the inputs and outputs." in md
+        assert "_understand_: Explain how plants convert sunlight into food." in md
+        # Assessment prompt + resolved outcome text (not the raw id).
+        assert "Match each input to its output." in md
+        assert "Explain how plants convert sunlight into food." in md
+        # Reading link.
+        assert "[Photosynthesis](https://simple.wikipedia.org/wiki/Photosynthesis)" in md
+        # Trailing newline, no double trailing.
+        assert md.endswith("\n")
+        assert not md.endswith("\n\n")
+
+    @pytest.mark.asyncio
+    async def test_endpoint_returns_404_when_no_outline(
+        self, async_client: httpx.AsyncClient
+    ) -> None:
+        rag_server_id = await _make_rag_server(async_client)
+        try:
+            created = (
+                await async_client.post(
+                    "/api/v1/courses",
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
+                )
+            ).json()
+            r = await async_client.get(f"/api/v1/courses/{created['id']}/markdown")
+            assert r.status_code == 404
+        finally:
+            await _delete_rag_server(async_client, rag_server_id)
+
+    @pytest.mark.asyncio
+    async def test_endpoint_returns_markdown_after_generation(
+        self,
+        async_client: httpx.AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _patch_run_agent(monkeypatch)
+        _patch_chat_structured(monkeypatch)
+
+        rag_server_id = await _make_rag_server(async_client)
+        try:
+            created = (
+                await async_client.post(
+                    "/api/v1/courses",
+                    json={
+                        "rag_server_id": rag_server_id,
+                        "rag_top_k": 5,
+                        "input": _valid_request_payload(),
+                    },
+                )
+            ).json()
+            await _read_stream(
+                async_client, f"/api/v1/courses/{created['id']}/generate"
+            )
+            r = await async_client.get(f"/api/v1/courses/{created['id']}/markdown")
+            assert r.status_code == 200
+            assert r.headers["content-type"].startswith("text/markdown")
+            body = r.text
+            assert body.startswith("# Photosynthesis 101")
+            assert "## Module 1:" in body
+        finally:
+            await _delete_rag_server(async_client, rag_server_id)

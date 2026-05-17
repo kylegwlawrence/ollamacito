@@ -27,7 +27,7 @@ from typing import Annotated, AsyncGenerator
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -39,10 +39,12 @@ from app.db.models import Settings as UserSettings
 from app.schemas.course import (
     CourseCreate,
     CourseListItem,
+    CourseOutline,
     CourseRegenerateRequest,
     CourseResponse,
     CourseUpdate,
 )
+from app.services.course_markdown import outline_to_markdown
 from app.services.course_service import generate_course
 
 logger = get_logger(__name__)
@@ -212,6 +214,25 @@ async def get_course(
 ) -> CourseResponse:
     course = await _load_course_or_404(db, course_id, current_user.id)
     return CourseResponse.model_validate(course)
+
+
+@router.get("/{course_id}/markdown", response_class=PlainTextResponse)
+async def get_course_markdown(
+    course_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> PlainTextResponse:
+    course = await _load_course_or_404(db, course_id, current_user.id)
+    if course.outline is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Course {course_id} has no outline yet",
+        )
+    outline = CourseOutline.model_validate(course.outline)
+    return PlainTextResponse(
+        content=outline_to_markdown(outline),
+        media_type="text/markdown; charset=utf-8",
+    )
 
 
 @router.patch("/{course_id}", response_model=CourseResponse)
