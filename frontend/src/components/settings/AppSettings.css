@@ -13,6 +13,17 @@
   height: 100%;
 }
 
+.app-settings--error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-3);
+  height: 100%;
+  padding: var(--s-6);
+  text-align: center;
+}
+
 .app-settings__back-btn {
   display: inline-flex;
   align-items: center;

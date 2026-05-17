@@ -18,7 +18,9 @@ const AUTOSAVE_DELAY_MS = 500
 export const AppSettings = () => {
   const navigate = useNavigate()
   const settings = useSettingsStore((s) => s.settings)
-  const settingsLoading = useSettingsStore((s) => s.loading)
+  const settingsLoaded = useSettingsStore((s) => s.loaded)
+  const settingsError = useSettingsStore((s) => s.error)
+  const refreshSettings = useSettingsStore((s) => s.refreshSettings)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
   const showToast = useToastStore((s) => s.showToast)
   const { models } = useModels()
@@ -131,7 +133,23 @@ export const AppSettings = () => {
     persist({ conversation_summarization_model: value || undefined })
   }
 
-  if (settingsLoading) {
+  // Don't render the form until we've successfully loaded the persisted row.
+  // Rendering with the DEFAULT_SETTINGS sentinel risks the autosave handlers
+  // PATCHing those defaults over the user's real values the moment they
+  // interact with any field.
+  if (!settingsLoaded) {
+    if (settingsError) {
+      return (
+        <div className="app-settings app-settings--error">
+          <p className="app-settings__error" role="alert">
+            Failed to load settings: {settingsError}
+          </p>
+          <Button variant="primary" onClick={() => refreshSettings()}>
+            Retry
+          </Button>
+        </div>
+      )
+    }
     return (
       <div className="app-settings app-settings--loading">
         <LoadingSpinner />
