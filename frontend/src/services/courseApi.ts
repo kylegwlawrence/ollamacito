@@ -30,4 +30,12 @@ export const courseApi = {
   remove: async (courseId: string): Promise<void> => {
     await api.delete(`/courses/${courseId}`)
   },
+
+  getMarkdown: async (courseId: string): Promise<string> => {
+    const { data } = await api.get(`/courses/${courseId}/markdown`, {
+      responseType: 'text',
+      transformResponse: [(d) => d],
+    })
+    return data
+  },
 }

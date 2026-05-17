@@ -5,6 +5,7 @@ import { useConfirmStore } from '@/stores/confirmStore'
 import { useCourseStore } from '@/stores/courseStore'
 import { useRagServersStore } from '@/stores/ragServersStore'
 import { useToastStore } from '@/stores/toastStore'
+import { courseApi } from '@/services/courseApi'
 import { Button } from '../common/Button'
 import { LoadingSpinner } from '../common/LoadingSpinner'
 import { ViewHeader } from '../common/ViewHeader'
@@ -190,6 +191,26 @@ export const CourseDetail = () => {
     URL.revokeObjectURL(url)
   }
 
+  const handleDownloadMarkdown = async () => {
+    try {
+      const markdown = await courseApi.getMarkdown(course.id)
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${course.title.replace(/\s+/g, '_').toLowerCase()}.md`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Failed to download markdown',
+        'error',
+      )
+    }
+  }
+
   // Resolve which outline to render: in-flight generation result first, then
   // whatever was persisted on the row.
   const outline: CourseOutline | null = gen.outline ?? course.outline
@@ -250,6 +271,15 @@ export const CourseDetail = () => {
               leadingIcon="download"
             >
               Download JSON
+            </Button>
+            <Button
+              onClick={handleDownloadMarkdown}
+              variant="ghost"
+              size="sm"
+              disabled={!outline}
+              leadingIcon="download"
+            >
+              Download Markdown
             </Button>
             <Button
               onClick={handleDelete}
